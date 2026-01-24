@@ -82,9 +82,6 @@ public final class BossDropListener implements Listener {
 
             case NIGHT_VISION -> PotionKits.makePotionKit(plugin, PotionKits.PotionTokenType.NIGHT_VISION, clamped);
             case WATER_BREATHING -> PotionKits.makePotionKit(plugin, PotionKits.PotionTokenType.WATER_BREATHING, clamped);
-
-            // Not currently used by drops in this file, but exists in enum:
-            case SPEED -> PotionKits.makePotionKit(plugin, PotionKits.PotionTokenType.SPEED, clamped);
         };
     }
 
