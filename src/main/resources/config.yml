@@ -1,0 +1,129 @@
+spawn:
+  one_in: 250
+
+mobs:
+  whitelist: [ZOMBIE, SKELETON, SPIDER, HUSK, STRAY]
+
+messages:
+  enabled: true
+  radius: 40
+
+  # CHAT = normal chat, ACTIONBAR = jukebox style
+  mode: "ACTIONBAR"
+
+  spawn:
+    enabled: true
+    format: "&6A {rank_color}{title}{mob} &6has wanders nearby..."
+
+  death:
+    enabled: true
+    format: "&aDefeated: {rank_color}{title}{mob} &e(+{rank_xp}x XP)"
+
+  despawn:
+    enabled: true
+    format: "&7Faded: {rank_color}{title}{mob}"
+
+despawn:
+  enabled: true
+  after_seconds: 120
+  only_if_no_players_within: 48
+  require_no_target: true
+
+rewards:
+  xp_multiplier: 1.0
+
+fx:
+  spawn:
+    enabled: true
+    radius: 24
+    sound: "ENTITY_WITHER_SPAWN"
+    volume: 0.45
+    pitch: 1.1
+    particles:
+      GRAY: 8
+      GREEN: 12
+      RED: 16
+      PURPLE: 22
+      GOLD: 30
+
+affix_titles:
+  lifesteal: "Vampiric"
+  mark: "Huntsman"
+  bleed: "Bloodied"
+  thorns: "Thorned"
+  pull: "Hooked"
+  knockback: "Brutalizer"
+  shockwave: "Earthshaker"
+  intimidate: "Dread"
+
+boss:
+  name:
+    enabled: true
+    text: "Boss"
+    color: "&c"
+    show_rank_label: false     # hide "Legendary/Hard/etc"
+    brackets: false            # no [ ]
+
+# fallback stats used if rank.stats missing
+stats:
+  health_multiplier: 4.0
+  damage_multiplier: 1.5
+  speed_multiplier: 1.0
+
+ranks:
+  GRAY:
+    label: "Hard"
+    color: "&7"
+    xp_multiplier: 10
+    max_affixes: 1
+    stats: { health_multiplier: 4.5, damage_multiplier: 1.7, speed_multiplier: 1.35 }
+    weight: 50
+  GREEN:
+    label: "Very Hard"
+    color: "&a"
+    xp_multiplier: 25
+    max_affixes: 2
+    stats: { health_multiplier: 5.5, damage_multiplier: 1.9, speed_multiplier: 1.42 }
+    weight: 20
+  RED:
+    label: "Brutal"
+    color: "&c"
+    xp_multiplier: 45
+    max_affixes: 3
+    stats: { health_multiplier: 6.5, damage_multiplier: 2.15, speed_multiplier: 1.48 }
+    weight: 15
+  PURPLE:
+    label: "Nightmare"
+    color: "&5"
+    xp_multiplier: 70
+    max_affixes: 3
+    stats: { health_multiplier: 8.0, damage_multiplier: 2.4, speed_multiplier: 1.55 }
+    weight: 10
+  GOLD:
+    label: "Legendary"
+    color: "&6"
+    xp_multiplier: 100
+    max_affixes: 4
+    stats: { health_multiplier: 10.0, damage_multiplier: 2.8, speed_multiplier: 1.62 }
+    weight: 5
+
+affixes:
+  enabled: true
+  max_per_boss: 2
+
+  rank_scaling:
+    GRAY: 1.00
+    GREEN: 1.10
+    RED: 1.25
+    PURPLE: 1.45
+    GOLD: 1.70
+
+  pool:
+    lifesteal: { weight: 5, chance: 0.25, cooldown_ms: 1200, heal_percent_of_damage: 0.20 }
+    knockback: { weight: 2, chance: 0.30, strength: 1.2, upward: 0.35, cooldown_ms: 1000 }
+    bleed: { weight: 3, chance: 0.25, duration_ticks: 60, amplifier: 0, cooldown_ms: 1200 }
+    pull: { weight: 2, chance: 0.20, force: 0.8, cooldown_ms: 1400 }
+    mark: { weight: 2, chance: 0.25, cooldown_ms: 1200, mark_duration_ms: 3000, bonus_damage_multiplier: 1.5 }
+    thorns: { weight: 3, chance: 0.35, reflect_percent: 0.25, cooldown_ms: 1000 }
+    shockwave: { weight: 2, chance: 0.15, radius: 4.0, max_targets: 4, damage: 4.0, knockback: 1.1, cooldown_ms: 2500 }
+    intimidate: { weight: 2, effect: "SLOWNESS", duration_ticks: 40, amplifier: 0, cooldown_ms: 3000 }
