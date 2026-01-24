@@ -252,6 +252,9 @@ public final class AddOnListener implements Listener {
             case FIRE_RESIST -> keys.fireResLevel();
             case HEALTH_BOOST -> keys.healthBoostLevel();
             case NIGHT_VISION -> keys.nightVisionLevel();
+           
+            case WATER_BREATHING -> keys.custom("water_breathing_level");
+
         };
     }
 
