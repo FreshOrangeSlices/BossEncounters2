@@ -1,5 +1,8 @@
 package com.orangeslices.bossencounters;
 
+import com.orangeslices.bossencounters.token.TokenDefinition;
+import com.orangeslices.bossencounters.token.TokenRegistry;
+import com.orangeslices.bossencounters.token.TokenType;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
 import org.bukkit.World;
@@ -17,6 +20,9 @@ public final class BossDropListener implements Listener {
 
     private final BossEncountersPlugin plugin;
     private final Random random = new Random();
+
+    // Unified token source-of-truth
+    private final TokenRegistry registry = new TokenRegistry();
 
     public BossDropListener(BossEncountersPlugin plugin) {
         this.plugin = plugin;
@@ -60,18 +66,25 @@ public final class BossDropListener implements Listener {
     }
 
     private ItemStack createToken(TokenType type, int level) {
+        // Clamp using registry definition (keeps behavior stable & centralized)
+        TokenDefinition def = registry.get(type);
+        int clamped = (def == null) ? level : def.clampLevel(level);
+
         return switch (type) {
-            case SHARPENING -> SharpeningKits.makeSharpeningKit(plugin, level);
-            case MARK -> MarkKits.makeMarkKit(plugin, level);
+            case SHARPEN -> SharpeningKits.makeSharpeningKit(plugin, clamped);
+            case MARK -> MarkKits.makeMarkKit(plugin, clamped);
 
-            case HASTE -> PotionKits.makePotionKit(plugin, PotionKits.PotionTokenType.HASTE, level);
-            case STRENGTH -> PotionKits.makePotionKit(plugin, PotionKits.PotionTokenType.STRENGTH, level);
+            case HASTE -> PotionKits.makePotionKit(plugin, PotionKits.PotionTokenType.HASTE, clamped);
+            case STRENGTH -> PotionKits.makePotionKit(plugin, PotionKits.PotionTokenType.STRENGTH, clamped);
 
-            case FIRE_RESISTANCE -> PotionKits.makePotionKit(plugin, PotionKits.PotionTokenType.FIRE_RESISTANCE, level);
-            case HEALTH_BOOST -> PotionKits.makePotionKit(plugin, PotionKits.PotionTokenType.HEALTH_BOOST, level);
+            case FIRE_RESIST -> PotionKits.makePotionKit(plugin, PotionKits.PotionTokenType.FIRE_RESISTANCE, clamped);
+            case HEALTH_BOOST -> PotionKits.makePotionKit(plugin, PotionKits.PotionTokenType.HEALTH_BOOST, clamped);
 
-            case NIGHT_VISION -> PotionKits.makePotionKit(plugin, PotionKits.PotionTokenType.NIGHT_VISION, level);
-            case WATER_BREATHING -> PotionKits.makePotionKit(plugin, PotionKits.PotionTokenType.WATER_BREATHING, level);
+            case NIGHT_VISION -> PotionKits.makePotionKit(plugin, PotionKits.PotionTokenType.NIGHT_VISION, clamped);
+            case WATER_BREATHING -> PotionKits.makePotionKit(plugin, PotionKits.PotionTokenType.WATER_BREATHING, clamped);
+
+            // Not currently used by drops in this file, but exists in enum:
+            case SPEED -> PotionKits.makePotionKit(plugin, PotionKits.PotionTokenType.SPEED, clamped);
         };
     }
 
@@ -90,7 +103,7 @@ public final class BossDropListener implements Listener {
 
     /**
      * Weighted selection per-rank.
-     * Early ranks: mostly Sharpening/Mark.
+     * Early ranks: mostly Sharpen/Mark.
      * Higher ranks: potion kits show up more often.
      */
     private TokenType rollTokenType(String rankUpper) {
@@ -98,47 +111,47 @@ public final class BossDropListener implements Listener {
 
         return switch (rankUpper) {
             case "GRAY" -> pickWeighted(r,
-                    0.55, TokenType.SHARPENING,
+                    0.55, TokenType.SHARPEN,
                     0.45, TokenType.MARK
             );
 
             case "GREEN" -> pickWeighted(r,
-                    0.50, TokenType.SHARPENING,
+                    0.50, TokenType.SHARPEN,
                     0.35, TokenType.MARK,
                     0.15, TokenType.HASTE
             );
 
             case "RED" -> pickWeighted(r,
-                    0.40, TokenType.SHARPENING,
+                    0.40, TokenType.SHARPEN,
                     0.30, TokenType.MARK,
                     0.12, TokenType.HASTE,
                     0.10, TokenType.STRENGTH,
-                    0.08, TokenType.FIRE_RESISTANCE
+                    0.08, TokenType.FIRE_RESIST
             );
 
             case "PURPLE" -> pickWeighted(r,
-                    0.30, TokenType.SHARPENING,
+                    0.30, TokenType.SHARPEN,
                     0.22, TokenType.MARK,
                     0.12, TokenType.HASTE,
                     0.12, TokenType.STRENGTH,
-                    0.10, TokenType.FIRE_RESISTANCE,
+                    0.10, TokenType.FIRE_RESIST,
                     0.08, TokenType.HEALTH_BOOST,
                     0.06, TokenType.NIGHT_VISION
             );
 
             case "GOLD" -> pickWeighted(r,
-                    0.22, TokenType.SHARPENING,
+                    0.22, TokenType.SHARPEN,
                     0.18, TokenType.MARK,
                     0.14, TokenType.HASTE,
                     0.14, TokenType.STRENGTH,
-                    0.10, TokenType.FIRE_RESISTANCE,
+                    0.10, TokenType.FIRE_RESIST,
                     0.10, TokenType.HEALTH_BOOST,
                     0.06, TokenType.NIGHT_VISION,
                     0.06, TokenType.WATER_BREATHING
             );
 
             default -> pickWeighted(r,
-                    0.50, TokenType.SHARPENING,
+                    0.50, TokenType.SHARPEN,
                     0.50, TokenType.MARK
             );
         };
@@ -146,11 +159,11 @@ public final class BossDropListener implements Listener {
 
     /**
      * Rank-scaled Level II chance, with hard clamps:
-     * - FIRE_RESISTANCE / WATER_BREATHING / NIGHT_VISION are always Level I (no Level II).
+     * - FIRE_RESIST / WATER_BREATHING / NIGHT_VISION are always Level I (no Level II).
+     * (Registry also clamps these to max 1, so this is doubly safe.)
      */
     private int rollTokenLevel(TokenType type, String rankUpper) {
-        // These potion effects don't meaningfully scale with amplifier — keep them Level I only.
-        if (type == TokenType.FIRE_RESISTANCE || type == TokenType.WATER_BREATHING || type == TokenType.NIGHT_VISION) {
+        if (type == TokenType.FIRE_RESIST || type == TokenType.WATER_BREATHING || type == TokenType.NIGHT_VISION) {
             return 1;
         }
 
@@ -169,7 +182,7 @@ public final class BossDropListener implements Listener {
             TokenType t = rollTokenType(rankUpper);
             if (t != notThis) return t;
         }
-        return (notThis == TokenType.SHARPENING) ? TokenType.MARK : TokenType.SHARPENING;
+        return (notThis == TokenType.SHARPEN) ? TokenType.MARK : TokenType.SHARPEN;
     }
 
     /**
@@ -185,19 +198,6 @@ public final class BossDropListener implements Listener {
             if (r < cumulative) return t;
         }
         return (TokenType) pairs[pairs.length - 1];
-    }
-
-    private enum TokenType {
-        SHARPENING,
-        MARK,
-
-        // Potion kits
-        HASTE,
-        STRENGTH,
-        FIRE_RESISTANCE,
-        HEALTH_BOOST,
-        NIGHT_VISION,
-        WATER_BREATHING
     }
 
     /* =========================
