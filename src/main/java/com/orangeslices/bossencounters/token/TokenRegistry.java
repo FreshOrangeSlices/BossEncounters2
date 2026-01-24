@@ -67,6 +67,7 @@ public final class TokenRegistry {
                 "&7Speed: &f{level}"
         ));
 
+        // These effects are intentionally non-scaling (Level I only)
         register(new TokenDefinition(
                 TokenType.FIRE_RESIST,
                 TokenDefinition.Target.ARMOR_CHESTPLATE,
@@ -89,6 +90,14 @@ public final class TokenRegistry {
                 1, 1,
                 "Night Vision",
                 "&7Night Vision: &f{level}"
+        ));
+
+        register(new TokenDefinition(
+                TokenType.WATER_BREATHING,
+                TokenDefinition.Target.ARMOR_HELMET,
+                1, 1,
+                "Water Breathing",
+                "&7Water Breathing: &f{level}"
         ));
     }
 
