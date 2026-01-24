@@ -1,5 +1,6 @@
 package com.orangeslices.bossencounters;
 
+import com.orangeslices.bossencounters.boss.BossManager;
 import org.bukkit.ChatColor;
 import org.bukkit.Location;
 import org.bukkit.NamespacedKey;
@@ -9,22 +10,17 @@ import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.scheduler.BukkitTask;
 
-import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
 
 public final class BossEncountersPlugin extends JavaPlugin {
 
     private NamespacedKey bossKey;
     private BossApplier bossApplier;
 
-    // Track active bosses per world (UUID key = world UUID)
-    private final Map<UUID, Integer> activeBossesByWorld = new ConcurrentHashMap<>();
+    // Extracted manager (removes “god class” state)
+    private BossManager bossManager;
 
-    // Track despawn tasks per boss entity
-    private final Map<UUID, BukkitTask> despawnTasks = new ConcurrentHashMap<>();
-
-    // Keep a reference to spawn listener so BecCommand can call onBossCreated/onBossRemoved
+    // Keep a reference to spawn listener so BossManager can forward onBossCreated
     private SpawnBossListener spawnBossListener;
 
     // Keep reference so we can stop the scheduled task cleanly
@@ -39,6 +35,9 @@ public final class BossEncountersPlugin extends JavaPlugin {
 
         // Register listeners (store spawn listener reference)
         spawnBossListener = new SpawnBossListener(this);
+
+        // Boss lifecycle manager (tracks counts + despawn tasks)
+        bossManager = new BossManager(this, spawnBossListener);
 
         getServer().getPluginManager().registerEvents(spawnBossListener, this);
         getServer().getPluginManager().registerEvents(new BossCombatListener(this), this);
@@ -68,14 +67,11 @@ public final class BossEncountersPlugin extends JavaPlugin {
             potionAddOnListener = null;
         }
 
-        // Cancel any scheduled boss despawns
-        for (UUID id : despawnTasks.keySet()) {
-            cancelBossDespawn(id);
+        // Cleanup boss lifecycle state/tasks
+        if (bossManager != null) {
+            bossManager.shutdown();
+            bossManager = null;
         }
-        despawnTasks.clear();
-
-        // Reset counts (not required, but keeps state clean)
-        activeBossesByWorld.clear();
 
         getLogger().info("BossEncounters disabled.");
     }
@@ -134,68 +130,42 @@ public final class BossEncountersPlugin extends JavaPlugin {
     }
 
     /* -------------------------
-       Boss cap + tracking (for BecCommand + sanity)
+       Boss cap + tracking (delegated)
        ------------------------- */
 
     public boolean canCreateBossIn(World world) {
-        if (world == null) return false;
-
-        int cap = getMaxBossesPerWorld();
-        if (cap <= 0) return true; // 0 = unlimited
-
-        return getActiveBossCount(world) < cap;
+        return bossManager != null && bossManager.canCreateBossIn(world);
     }
 
     public int getMaxBossesPerWorld() {
-        return getConfig().getInt("boss.cap.max_per_world", 0);
+        return bossManager == null ? 0 : bossManager.getMaxBossesPerWorld();
     }
 
     public int getActiveBossCount(World world) {
-        if (world == null) return 0;
-        return activeBossesByWorld.getOrDefault(world.getUID(), 0);
+        return bossManager == null ? 0 : bossManager.getActiveBossCount(world);
     }
 
     /* -------------------------
-       Boss lifecycle hooks (called by SpawnBossListener + BecCommand)
+       Boss lifecycle hooks (delegated)
        ------------------------- */
 
     public void onBossCreated(LivingEntity boss) {
-        if (boss == null || boss.getWorld() == null) return;
-
-        // increment active boss count
-        UUID w = boss.getWorld().getUID();
-        activeBossesByWorld.merge(w, 1, Integer::sum);
-
-        // forward to listener to apply messages/despawn scheduling
-        if (spawnBossListener != null) {
-            spawnBossListener.onBossCreated(boss);
-        }
+        if (bossManager != null) bossManager.onBossCreated(boss);
     }
 
     public void onBossRemoved(LivingEntity boss) {
-        if (boss == null || boss.getWorld() == null) return;
-
-        // decrement active boss count (never below 0)
-        UUID w = boss.getWorld().getUID();
-        activeBossesByWorld.compute(w, (k, v) -> {
-            int cur = (v == null) ? 0 : v;
-            return Math.max(0, cur - 1);
-        });
-
-        cancelBossDespawn(boss.getUniqueId());
+        if (bossManager != null) bossManager.onBossRemoved(boss);
     }
 
     /* -------------------------
-       Despawn task management
+       Despawn task management (delegated)
        ------------------------- */
 
     public void scheduleBossDespawn(UUID bossId, BukkitTask task) {
-        cancelBossDespawn(bossId);
-        despawnTasks.put(bossId, task);
+        if (bossManager != null) bossManager.scheduleBossDespawn(bossId, task);
     }
 
     public void cancelBossDespawn(UUID bossId) {
-        BukkitTask old = despawnTasks.remove(bossId);
-        if (old != null) old.cancel();
+        if (bossManager != null) bossManager.cancelBossDespawn(bossId);
     }
 }
