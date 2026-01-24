@@ -1,5 +1,9 @@
 package com.orangeslices.bossencounters;
 
+import com.orangeslices.bossencounters.token.TokenDefinition;
+import com.orangeslices.bossencounters.token.TokenKeys;
+import com.orangeslices.bossencounters.token.TokenRegistry;
+import com.orangeslices.bossencounters.token.TokenType;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
 import org.bukkit.Sound;
@@ -14,50 +18,43 @@ import org.bukkit.persistence.PersistentDataType;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 
 public final class AddOnListener implements Listener {
 
     private final BossEncountersPlugin plugin;
 
-    // Token keys (future-proof)
+    // New centralized helpers
+    private final TokenKeys keys;
+    private final TokenRegistry registry;
+
+    // Token item keys
     private final NamespacedKey tokenTypeKey;
     private final NamespacedKey tokenLevelKey;
 
-    // Weapon upgrade keys (custom effects)
-    private final NamespacedKey sharpenLevelKey;
-    private final NamespacedKey markLevelKey;
-
-    // Potion add-on keys (read by PotionAddOnListener)
-    private final NamespacedKey hasteKey;
-    private final NamespacedKey strengthKey;
-    private final NamespacedKey fireResKey;
-    private final NamespacedKey waterBreathingKey;
-    private final NamespacedKey nightVisionKey;
-    private final NamespacedKey healthBoostKey;
-
-    // Legacy support (older kits)
+    // Legacy token keys (older kits)
     private final NamespacedKey legacySharpenKitKey;
     private final NamespacedKey legacyMarkKitKey;
+
+    // Legacy / extra token still supported even if not in TokenType (keeps old behavior)
+    private final NamespacedKey waterBreathingKey;
 
     public AddOnListener(BossEncountersPlugin plugin) {
         this.plugin = plugin;
 
-        this.tokenTypeKey = new NamespacedKey(plugin, "token_type");
-        this.tokenLevelKey = new NamespacedKey(plugin, "token_level");
+        this.keys = new TokenKeys(plugin);
+        this.registry = new TokenRegistry();
 
-        this.sharpenLevelKey = new NamespacedKey(plugin, "sharpen_level");
-        this.markLevelKey = new NamespacedKey(plugin, "mark_level");
+        // Current token item storage
+        this.tokenTypeKey = keys.tokenType();
+        this.tokenLevelKey = keys.custom("token_level");
 
-        this.hasteKey = new NamespacedKey(plugin, "haste_level");
-        this.strengthKey = new NamespacedKey(plugin, "strength_level");
+        // Legacy support
+        this.legacySharpenKitKey = keys.custom("sharpen_kit_level");
+        this.legacyMarkKitKey = keys.custom("mark_kit_level");
 
-        this.fireResKey = new NamespacedKey(plugin, "fire_res_level");
-        this.waterBreathingKey = new NamespacedKey(plugin, "water_breathing_level");
-        this.nightVisionKey = new NamespacedKey(plugin, "night_vision_level");
-        this.healthBoostKey = new NamespacedKey(plugin, "health_boost_level");
-
-        this.legacySharpenKitKey = new NamespacedKey(plugin, "sharpen_kit_level");
-        this.legacyMarkKitKey = new NamespacedKey(plugin, "mark_kit_level");
+        // Older addon still supported (helmet-only)
+        this.waterBreathingKey = keys.custom("water_breathing_level");
     }
 
     @EventHandler
@@ -77,7 +74,7 @@ public final class AddOnListener implements Listener {
         HandTokenTarget tt = resolveTokenAndTarget(main, off);
         if (tt == null) return;
 
-        boolean applied = applyTokenToTarget(tt.tokenType, tt.tokenLevel, tt.target);
+        boolean applied = applyTokenToTarget(tt.tokenTypeRaw, tt.tokenLevel, tt.target);
         if (!applied) return;
 
         consumeOneFromHand(player, tt.tokenHand);
@@ -92,67 +89,47 @@ public final class AddOnListener implements Listener {
     private boolean applyTokenToTarget(String tokenTypeRaw, int tokenLevel, ItemStack target) {
         if (target == null || target.getType() == Material.AIR) return false;
 
-        String tokenType = tokenTypeRaw == null ? "" : tokenTypeRaw.trim().toUpperCase();
-        tokenLevel = clampLevel(tokenLevel);
+        String normalized = normalizeTokenType(tokenTypeRaw);
 
-        // Decide which key + where it can apply
-        return switch (tokenType) {
+        // Special legacy token that we still support even if not in registry
+        if (normalized.equals("WATER_BREATHING")) {
+            if (!isHelmet(target)) return false;
+            int next = clampGeneric(tokenLevel); // historical behavior: 1..2
+            return applyLevelToItem(target, next, waterBreathingKey, "§7Water Breathing: ");
+        }
 
-            // Custom effects (weapons)
-            case "SHARPENING" -> {
-                if (!isWeapon(target)) yield false;
-                yield applyLevelToItem(target, tokenLevel, sharpenLevelKey, "§7Sharpened: ", "I", "II");
-            }
-            case "MARK" -> {
-                if (!isWeapon(target)) yield false;
-                yield applyLevelToItem(target, tokenLevel, markLevelKey, "§7Mark: ", "I", "II");
-            }
+        // Registry-backed token types
+        TokenType type = parseTokenType(normalized);
+        if (type == null) return false;
 
-            // Potion add-ons (held item)
-            case "HASTE" -> {
-                if (!isToolOrWeapon(target)) yield false;
-                yield applyLevelToItem(target, tokenLevel, hasteKey, "§7Haste: ", "I", "II");
-            }
-            case "STRENGTH" -> {
-                if (!isWeapon(target)) yield false;
-                yield applyLevelToItem(target, tokenLevel, strengthKey, "§7Strength: ", "I", "II");
-            }
+        TokenDefinition def = registry.get(type);
+        if (def == null) return false;
 
-            // Potion add-ons (armor)
-            case "FIRE_RES", "FIRE_RESIST", "FIRE_RESISTANCE" -> {
-                if (!isArmor(target)) yield false;
-                yield applyLevelToItem(target, tokenLevel, fireResKey, "§7Fire Res: ", "I", "II");
-            }
-            case "HEALTH_BOOST" -> {
-                if (!isArmor(target)) yield false;
-                yield applyLevelToItem(target, tokenLevel, healthBoostKey, "§7Health Boost: ", "I", "II");
-            }
+        // Clamp via registry definition
+        int clamped = def.clampLevel(tokenLevel);
 
-            // Helmet-only potion add-ons
-            case "NIGHT_VISION" -> {
-                if (!isHelmet(target)) yield false;
-                yield applyLevelToItem(target, tokenLevel, nightVisionKey, "§7Night Vision: ", "I", "II");
-            }
-            case "WATER_BREATHING" -> {
-                if (!isHelmet(target)) yield false;
-                yield applyLevelToItem(target, tokenLevel, waterBreathingKey, "§7Water Breathing: ", "I", "II");
-            }
+        // Validate target compatibility
+        if (!isValidTarget(def.target(), type, target)) return false;
 
-            default -> false;
-        };
+        // Apply to the appropriate PDC key
+        NamespacedKey appliedKey = keyForAppliedLevel(type);
+        if (appliedKey == null) return false;
+
+        // Lore line: use registry format if present, otherwise fall back to a stable prefix
+        String lorePrefix = "§7" + def.displayName() + ": ";
+        return applyLevelToItem(target, clamped, appliedKey, lorePrefix);
     }
 
     /**
      * Writes PDC level, updates/overwrites a single lore line (does not nuke other lore).
+     * Lore formatting keeps your old “I/II” style for 1–2; otherwise uses numeric.
      */
-    private boolean applyLevelToItem(ItemStack item, int level, NamespacedKey itemKey,
-                                     String lorePrefix, String roman1, String roman2) {
+    private boolean applyLevelToItem(ItemStack item, int level, NamespacedKey itemKey, String lorePrefix) {
         ItemMeta meta = item.getItemMeta();
         if (meta == null) return false;
 
         int current = meta.getPersistentDataContainer().getOrDefault(itemKey, PersistentDataType.INTEGER, 0);
         int next = Math.max(current, level);
-        next = clampLevel(next);
 
         if (next == current) return false;
 
@@ -160,14 +137,21 @@ public final class AddOnListener implements Listener {
 
         List<String> lore = meta.hasLore() ? new ArrayList<>(meta.getLore()) : new ArrayList<>();
         lore.removeIf(line -> line != null && line.startsWith(lorePrefix));
-        lore.add(lorePrefix + (next == 1 ? roman1 : roman2));
+        lore.add(lorePrefix + romanOrNumber(next));
         meta.setLore(lore);
 
         item.setItemMeta(meta);
         return true;
     }
 
-    private int clampLevel(int lvl) {
+    private String romanOrNumber(int level) {
+        // Preserve the original vibe: I / II for the common case
+        if (level == 1) return "I";
+        if (level == 2) return "II";
+        return String.valueOf(level);
+    }
+
+    private int clampGeneric(int lvl) {
         if (lvl < 1) return 1;
         if (lvl > 2) return 2;
         return lvl;
@@ -183,10 +167,10 @@ public final class AddOnListener implements Listener {
         TokenInfo offToken = getTokenInfo(off);
 
         if (mainToken != null && off != null && off.getType() != Material.AIR) {
-            return new HandTokenTarget(EquipmentSlot.HAND, mainToken.type, mainToken.level, off);
+            return new HandTokenTarget(EquipmentSlot.HAND, mainToken.typeRaw, mainToken.level, off);
         }
         if (offToken != null && main != null && main.getType() != Material.AIR) {
-            return new HandTokenTarget(EquipmentSlot.OFF_HAND, offToken.type, offToken.level, main);
+            return new HandTokenTarget(EquipmentSlot.OFF_HAND, offToken.typeRaw, offToken.level, main);
         }
         return null;
     }
@@ -226,6 +210,71 @@ public final class AddOnListener implements Listener {
     }
 
     /* =========================
+       Token parsing + mapping
+       ========================= */
+
+    private String normalizeTokenType(String raw) {
+        if (raw == null) return "";
+        return raw.trim().toUpperCase(Locale.ROOT);
+    }
+
+    /**
+     * Maps legacy strings + aliases into the unified TokenType enum names.
+     * We keep old spellings so nothing breaks.
+     */
+    private TokenType parseTokenType(String normalized) {
+        if (normalized.isBlank()) return null;
+
+        // Legacy / aliases
+        normalized = switch (normalized) {
+            case "SHARPENING", "SHARPEN", "SHARPENED" -> "SHARPEN";
+            case "FIRE_RES", "FIRE_RESIST", "FIRE_RESISTANCE" -> "FIRE_RESIST";
+            default -> normalized;
+        };
+
+        // Enum is strict — return null if not supported
+        try {
+            return TokenType.valueOf(normalized);
+        } catch (IllegalArgumentException ignored) {
+            return null;
+        }
+    }
+
+    private NamespacedKey keyForAppliedLevel(TokenType type) {
+        return switch (type) {
+            case SHARPEN -> keys.sharpenLevel();
+            case MARK -> keys.markLevel();
+
+            case HASTE -> keys.hasteLevel();
+            case STRENGTH -> keys.strengthLevel();
+            case SPEED -> keys.speedLevel();
+
+            case FIRE_RESIST -> keys.fireResLevel();
+            case HEALTH_BOOST -> keys.healthBoostLevel();
+            case NIGHT_VISION -> keys.nightVisionLevel();
+        };
+    }
+
+    private boolean isValidTarget(TokenDefinition.Target targetRule, TokenType type, ItemStack target) {
+        // Keep behavior consistent with the current plugin:
+        // - HASTE allowed on tools OR weapons (original logic)
+        if (type == TokenType.HASTE) {
+            return isToolOrWeapon(target);
+        }
+
+        return switch (targetRule) {
+            case WEAPON -> isWeapon(target);
+            case TOOL -> isToolOrWeapon(target);
+            case ARMOR_HELMET -> isHelmet(target);
+            case ARMOR_CHESTPLATE -> isChestplate(target);
+            case ARMOR_LEGGINGS -> isLeggings(target);
+            case ARMOR_BOOTS -> isBoots(target);
+            case ARMOR_ANY -> isArmor(target);
+            case ANY -> true;
+        };
+    }
+
+    /* =========================
        Target type checks
        ========================= */
 
@@ -244,7 +293,6 @@ public final class AddOnListener implements Listener {
         Material m = item.getType();
         String name = m.name();
 
-        // Tools
         boolean tool = name.endsWith("_PICKAXE")
                 || name.endsWith("_AXE")
                 || name.endsWith("_SHOVEL")
@@ -255,8 +303,7 @@ public final class AddOnListener implements Listener {
 
     private boolean isArmor(ItemStack item) {
         if (item == null || item.getType() == Material.AIR) return false;
-        Material m = item.getType();
-        String name = m.name();
+        String name = item.getType().name();
         return name.endsWith("_HELMET")
                 || name.endsWith("_CHESTPLATE")
                 || name.endsWith("_LEGGINGS")
@@ -266,6 +313,21 @@ public final class AddOnListener implements Listener {
     private boolean isHelmet(ItemStack item) {
         if (item == null || item.getType() == Material.AIR) return false;
         return item.getType().name().endsWith("_HELMET");
+    }
+
+    private boolean isChestplate(ItemStack item) {
+        if (item == null || item.getType() == Material.AIR) return false;
+        return item.getType().name().endsWith("_CHESTPLATE");
+    }
+
+    private boolean isLeggings(ItemStack item) {
+        if (item == null || item.getType() == Material.AIR) return false;
+        return item.getType().name().endsWith("_LEGGINGS");
+    }
+
+    private boolean isBoots(ItemStack item) {
+        if (item == null || item.getType() == Material.AIR) return false;
+        return item.getType().name().endsWith("_BOOTS");
     }
 
     /* =========================
@@ -292,17 +354,17 @@ public final class AddOnListener implements Listener {
        Small structs
        ========================= */
 
-    private record TokenInfo(String type, int level) {}
+    private record TokenInfo(String typeRaw, int level) {}
 
     private static final class HandTokenTarget {
         final EquipmentSlot tokenHand;
-        final String tokenType;
+        final String tokenTypeRaw;
         final int tokenLevel;
         final ItemStack target;
 
-        HandTokenTarget(EquipmentSlot tokenHand, String tokenType, int tokenLevel, ItemStack target) {
+        HandTokenTarget(EquipmentSlot tokenHand, String tokenTypeRaw, int tokenLevel, ItemStack target) {
             this.tokenHand = tokenHand;
-            this.tokenType = tokenType;
+            this.tokenTypeRaw = tokenTypeRaw;
             this.tokenLevel = tokenLevel;
             this.target = target;
         }
