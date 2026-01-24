@@ -19,5 +19,6 @@ public enum TokenType {
     SPEED,
     FIRE_RESIST,
     HEALTH_BOOST,
-    NIGHT_VISION
+    NIGHT_VISION,
+    WATER_BREATHING
 }
