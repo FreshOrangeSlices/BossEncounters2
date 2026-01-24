@@ -1,5 +1,6 @@
 package com.orangeslices.bossencounters;
 
+import com.orangeslices.bossencounters.token.TokenKeys;
 import org.bukkit.NamespacedKey;
 import org.bukkit.entity.Player;
 import org.bukkit.event.Listener;
@@ -14,6 +15,8 @@ public final class PotionAddOnListener implements Listener {
 
     private final BossEncountersPlugin plugin;
 
+    private final TokenKeys keys;
+
     private final NamespacedKey hasteKey;
     private final NamespacedKey strengthKey;
 
@@ -27,13 +30,19 @@ public final class PotionAddOnListener implements Listener {
     public PotionAddOnListener(BossEncountersPlugin plugin) {
         this.plugin = plugin;
 
-        this.hasteKey = new NamespacedKey(plugin, "haste_level");
-        this.strengthKey = new NamespacedKey(plugin, "strength_level");
+        this.keys = new TokenKeys(plugin);
 
-        this.fireResKey = new NamespacedKey(plugin, "fire_res_level");
-        this.waterBreathingKey = new NamespacedKey(plugin, "water_breathing_level");
-        this.nightVisionKey = new NamespacedKey(plugin, "night_vision_level");
-        this.healthBoostKey = new NamespacedKey(plugin, "health_boost_level");
+        // Centralized PDC keys
+        this.hasteKey = keys.hasteLevel();
+        this.strengthKey = keys.strengthLevel();
+
+        this.fireResKey = keys.fireResLevel();
+        this.healthBoostKey = keys.healthBoostLevel();
+
+        this.nightVisionKey = keys.nightVisionLevel();
+
+        // Still supported (legacy token not in TokenType list)
+        this.waterBreathingKey = keys.custom("water_breathing_level");
     }
 
     public void start() {
@@ -53,6 +62,7 @@ public final class PotionAddOnListener implements Listener {
     }
 
     private void refreshPotionAddOns(Player player) {
+        if (player == null) return;
 
         int haste = getHeldLevel(player.getInventory().getItemInMainHand(), hasteKey);
         int strength = getHeldLevel(player.getInventory().getItemInMainHand(), strengthKey);
@@ -107,10 +117,13 @@ public final class PotionAddOnListener implements Listener {
         if (item == null) return 0;
         ItemMeta meta = item.getItemMeta();
         if (meta == null) return 0;
-        return meta.getPersistentDataContainer()
-                .getOrDefault(key, PersistentDataType.INTEGER, 0);
+        return meta.getPersistentDataContainer().getOrDefault(key, PersistentDataType.INTEGER, 0);
     }
 
+    /**
+     * Preserve current behavior: global clamp 0..2 for potion add-ons.
+     * (Even if a token claims higher, this keeps it stable.)
+     */
     private int clamp(int lvl) {
         return Math.max(0, Math.min(2, lvl));
     }
