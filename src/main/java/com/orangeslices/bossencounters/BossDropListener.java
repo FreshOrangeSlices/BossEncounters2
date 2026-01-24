@@ -66,25 +66,27 @@ public final class BossDropListener implements Listener {
     }
 
     private ItemStack createToken(TokenType type, int level) {
-        // Clamp using registry definition (keeps behavior stable & centralized)
-        TokenDefinition def = registry.get(type);
-        int clamped = (def == null) ? level : def.clampLevel(level);
+    TokenDefinition def = registry.get(type);
+    int clamped = (def == null) ? level : def.clampLevel(level);
 
-        return switch (type) {
-            case SHARPEN -> SharpeningKits.makeSharpeningKit(plugin, clamped);
-            case MARK -> MarkKits.makeMarkKit(plugin, clamped);
+    return switch (type) {
+        case SHARPEN -> SharpeningKits.makeSharpeningKit(plugin, clamped);
+        case MARK -> MarkKits.makeMarkKit(plugin, clamped);
 
-            case HASTE -> PotionKits.makePotionKit(plugin, PotionKits.PotionTokenType.HASTE, clamped);
-            case STRENGTH -> PotionKits.makePotionKit(plugin, PotionKits.PotionTokenType.STRENGTH, clamped);
+        case HASTE -> PotionKits.makePotionKit(plugin, PotionKits.PotionTokenType.HASTE, clamped);
+        case STRENGTH -> PotionKits.makePotionKit(plugin, PotionKits.PotionTokenType.STRENGTH, clamped);
 
-            case FIRE_RESIST -> PotionKits.makePotionKit(plugin, PotionKits.PotionTokenType.FIRE_RESISTANCE, clamped);
-            case HEALTH_BOOST -> PotionKits.makePotionKit(plugin, PotionKits.PotionTokenType.HEALTH_BOOST, clamped);
+        case FIRE_RESIST -> PotionKits.makePotionKit(plugin, PotionKits.PotionTokenType.FIRE_RESISTANCE, clamped);
+        case HEALTH_BOOST -> PotionKits.makePotionKit(plugin, PotionKits.PotionTokenType.HEALTH_BOOST, clamped);
 
-            case NIGHT_VISION -> PotionKits.makePotionKit(plugin, PotionKits.PotionTokenType.NIGHT_VISION, clamped);
-            case WATER_BREATHING -> PotionKits.makePotionKit(plugin, PotionKits.PotionTokenType.WATER_BREATHING, clamped);
-        };
-    }
+        case NIGHT_VISION -> PotionKits.makePotionKit(plugin, PotionKits.PotionTokenType.NIGHT_VISION, clamped);
+        case WATER_BREATHING -> PotionKits.makePotionKit(plugin, PotionKits.PotionTokenType.WATER_BREATHING, clamped);
 
+        // SPEED is intentionally not dropped by bosses (yet)
+        default -> throw new IllegalStateException("Unhandled TokenType in BossDropListener: " + type);
+    };
+} 
+    
     private int rollTokenCount(String rankUpper) {
         double r = random.nextDouble();
 
