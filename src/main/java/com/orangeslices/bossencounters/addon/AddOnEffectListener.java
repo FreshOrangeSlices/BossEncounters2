@@ -1,4 +1,4 @@
-package com.orangeslices.bossencounters;
+package com.orangeslices.bossencounters.addon.effect;
 
 import org.bukkit.Bukkit;
 import org.bukkit.NamespacedKey;
