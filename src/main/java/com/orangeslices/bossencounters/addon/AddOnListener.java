@@ -1,5 +1,5 @@
 
-package com.orangeslices.bossencounters;
+package com.orangeslices.bossencounters.addon;
 
 import com.orangeslices.bossencounters.token.TokenDefinition;
 import com.orangeslices.bossencounters.token.TokenKeys;
