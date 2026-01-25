@@ -1,5 +1,6 @@
 package com.orangeslices.bossencounters;
 
+import com.orangeslices.bossencounters.command.BecCommand;
 import com.orangeslices.bossencounters.boss.BossManager;
 import com.orangeslices.bossencounters.boss.apply.BossApplier;
 import com.orangeslices.bossencounters.boss.spawn.SpawnBossListener;
