@@ -1,5 +1,6 @@
 package com.orangeslices.bossencounters;
 
+import com.orangeslices.bossencounters.boss.apply.BossApplier;
 import org.bukkit.ChatColor;
 import org.bukkit.NamespacedKey;
 import org.bukkit.World;
