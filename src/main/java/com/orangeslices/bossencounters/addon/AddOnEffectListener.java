@@ -1,5 +1,6 @@
 package com.orangeslices.bossencounters.addon.effect;
 
+import com.orangeslices.bossencounters.BossEncountersPlugin;
 import org.bukkit.Bukkit;
 import org.bukkit.NamespacedKey;
 import org.bukkit.entity.LivingEntity;
