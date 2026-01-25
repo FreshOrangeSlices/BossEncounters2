@@ -118,6 +118,19 @@ affixes:
     PURPLE: 1.45
     GOLD: 1.70
 
+    raffle:
+  enabled: true
+  max_slots_per_armor: 3
+  effects:
+    - health_boost
+    - fire_res
+    - water_breathing
+    - terror
+    - echoes
+    - broken_compass
+    - shadow_twin
+    - mandators_curse
+
   pool:
     lifesteal: { weight: 5, chance: 0.25, cooldown_ms: 1200, heal_percent_of_damage: 0.20 }
     knockback: { weight: 2, chance: 0.30, strength: 1.2, upward: 0.35, cooldown_ms: 1000 }
