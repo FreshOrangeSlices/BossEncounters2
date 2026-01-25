@@ -1,5 +1,6 @@
 package com.orangeslices.bossencounters.boss.spawn;
 
+import com.orangeslices.bossencounters.BossEncountersPlugin;
 import org.bukkit.ChatColor;
 import org.bukkit.Location;
 import org.bukkit.configuration.file.FileConfiguration;
