@@ -9,6 +9,10 @@ import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.scheduler.BukkitTask;
+import com.orangeslices.bossencounters.addon.potion.PotionAddOnListener;
+import com.orangeslices.bossencounters.addon.AddOnListener;
+import com.orangeslices.bossencounters.addon.effect.AddOnEffectListener;
+
 
 import java.util.UUID;
 
