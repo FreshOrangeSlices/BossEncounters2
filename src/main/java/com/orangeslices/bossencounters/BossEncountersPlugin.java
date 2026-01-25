@@ -1,6 +1,13 @@
 package com.orangeslices.bossencounters;
 
 import com.orangeslices.bossencounters.boss.BossManager;
+import com.orangeslices.bossencounters.boss.apply.BossApplier;
+import com.orangeslices.bossencounters.boss.spawn.SpawnBossListener;
+import com.orangeslices.bossencounters.boss.combat.BossCombatListener;
+import com.orangeslices.bossencounters.boss.drop.BossDropListener;
+import com.orangeslices.bossencounters.addon.potion.PotionAddOnListener;
+import com.orangeslices.bossencounters.addon.AddOnListener;
+import com.orangeslices.bossencounters.addon.effect.AddOnEffectListener;
 import org.bukkit.ChatColor;
 import org.bukkit.Location;
 import org.bukkit.NamespacedKey;
@@ -9,10 +16,6 @@ import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.scheduler.BukkitTask;
-import com.orangeslices.bossencounters.addon.potion.PotionAddOnListener;
-import com.orangeslices.bossencounters.addon.AddOnListener;
-import com.orangeslices.bossencounters.addon.effect.AddOnEffectListener;
-
 
 import java.util.UUID;
 
