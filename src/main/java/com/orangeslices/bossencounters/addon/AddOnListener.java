@@ -1,6 +1,7 @@
 
 package com.orangeslices.bossencounters.addon;
 
+import com.orangeslices.bossencounters.BossEncountersPlugin;
 import com.orangeslices.bossencounters.token.TokenDefinition;
 import com.orangeslices.bossencounters.token.TokenKeys;
 import com.orangeslices.bossencounters.token.TokenRegistry;
