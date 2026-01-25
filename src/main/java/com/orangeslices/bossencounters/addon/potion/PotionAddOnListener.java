@@ -1,5 +1,6 @@
 package com.orangeslices.bossencounters.addon.potion;
 
+import com.orangeslices.bossencounters.BossEncountersPlugin;
 import com.orangeslices.bossencounters.token.TokenKeys;
 import org.bukkit.NamespacedKey;
 import org.bukkit.entity.Player;
