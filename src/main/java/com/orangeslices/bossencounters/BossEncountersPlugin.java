@@ -1,6 +1,6 @@
 package com.orangeslices.bossencounters;
 
-import com.orangeslices.bossencounters.raffle.listener.ArmorEquipListener;
+import com.orangeslices.bossencounters.raffle.listeners.ArmorEquipListener;
 import com.orangeslices.bossencounters.command.BecCommand;
 import com.orangeslices.bossencounters.boss.BossManager;
 import com.orangeslices.bossencounters.boss.apply.BossApplier;
