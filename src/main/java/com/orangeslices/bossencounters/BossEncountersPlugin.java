@@ -1,5 +1,6 @@
 package com.orangeslices.bossencounters;
 
+import com.orangeslices.bossencounters.raffle.listener.ArmorEquipListener;
 import com.orangeslices.bossencounters.command.BecCommand;
 import com.orangeslices.bossencounters.boss.BossManager;
 import com.orangeslices.bossencounters.boss.apply.BossApplier;
@@ -53,6 +54,7 @@ public final class BossEncountersPlugin extends JavaPlugin {
         getServer().getPluginManager().registerEvents(new BossDropListener(this), this);
         getServer().getPluginManager().registerEvents(new AddOnListener(this), this);
         getServer().getPluginManager().registerEvents(new AddOnEffectListener(this), this);
+        getServer().getPluginManager().registerEvents(new ArmorEquipListener(this), this);
 
         // Potion AddOn path (refresh loop)
         potionAddOnListener = new PotionAddOnListener(this);
