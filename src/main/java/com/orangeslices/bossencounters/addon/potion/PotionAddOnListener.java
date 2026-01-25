@@ -1,4 +1,4 @@
-package com.orangeslices.bossencounters;
+package com.orangeslices.bossencounters.addon.potion;
 
 import com.orangeslices.bossencounters.token.TokenKeys;
 import org.bukkit.NamespacedKey;
