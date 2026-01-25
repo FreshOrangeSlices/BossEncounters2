@@ -1,7 +1,7 @@
 package com.orangeslices.bossencounters.boss;
 
 import com.orangeslices.bossencounters.BossEncountersPlugin;
-import com.orangeslices.bossencounters.SpawnBossListener;
+import com.orangeslices.bossencounters.boss.spawn.SpawnBossListener;
 import org.bukkit.World;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.scheduler.BukkitTask;
