@@ -119,8 +119,16 @@ affixes:
     GOLD: 1.70
 
     raffle:
+  max_slots_per_armor: 3
   enabled: true
   max_slots_per_armor: 3
+  curses:
+    - terror
+    - echoes
+    - broken_compass
+    - shadow_twin
+    - mandators_curse
+    - ogre
   effects:
     - health_boost
     - fire_res
