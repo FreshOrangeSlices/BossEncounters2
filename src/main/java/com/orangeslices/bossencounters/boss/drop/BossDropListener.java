@@ -1,5 +1,9 @@
 package com.orangeslices.bossencounters.boss.drop;
 
+import com.orangeslices.bossencounters.BossEncountersPlugin;
+import com.orangeslices.bossencounters.MarkKits;
+import com.orangeslices.bossencounters.PotionKits;
+import com.orangeslices.bossencounters.SharpeningKits;
 import com.orangeslices.bossencounters.token.TokenDefinition;
 import com.orangeslices.bossencounters.token.TokenRegistry;
 import com.orangeslices.bossencounters.token.TokenType;
