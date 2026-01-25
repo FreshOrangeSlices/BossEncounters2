@@ -1,11 +1,13 @@
-
 package com.orangeslices.bossencounters.addon;
 
 import com.orangeslices.bossencounters.BossEncountersPlugin;
+import com.orangeslices.bossencounters.raffle.RaffleService;
+import com.orangeslices.bossencounters.raffle.RaffleTokenFactory;
 import com.orangeslices.bossencounters.token.TokenDefinition;
 import com.orangeslices.bossencounters.token.TokenKeys;
 import com.orangeslices.bossencounters.token.TokenRegistry;
 import com.orangeslices.bossencounters.token.TokenType;
+import org.bukkit.ChatColor;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
 import org.bukkit.Sound;
@@ -73,6 +75,17 @@ public final class AddOnListener implements Listener {
         ItemStack main = player.getInventory().getItemInMainHand();
         ItemStack off = player.getInventory().getItemInOffHand();
 
+        // ----------------------------
+        // RAFFLE APPLY (NEW)
+        // token in one hand + armor in the other
+        // ----------------------------
+        if (tryApplyRaffle(player, event, main, off)) {
+            return;
+        }
+
+        // ----------------------------
+        // EXISTING ADDON APPLY (UNCHANGED)
+        // ----------------------------
         HandTokenTarget tt = resolveTokenAndTarget(main, off);
         if (tt == null) return;
 
@@ -82,6 +95,48 @@ public final class AddOnListener implements Listener {
         consumeOneFromHand(player, tt.tokenHand);
         player.playSound(player.getLocation(), Sound.BLOCK_ANVIL_USE, 0.7f, 1.4f);
         event.setCancelled(true);
+    }
+
+    private boolean tryApplyRaffle(Player player, PlayerInteractEvent event, ItemStack main, ItemStack off) {
+        boolean mainIsRaffle = RaffleTokenFactory.isRaffleToken(main);
+        boolean offIsRaffle = RaffleTokenFactory.isRaffleToken(off);
+
+        // main hand token -> off hand armor
+        if (mainIsRaffle && isArmor(off)) {
+            RaffleService.ApplyResult res = RaffleService.applyToArmor(off);
+            if (res.success) {
+                consumeOneFromHand(player, EquipmentSlot.HAND);
+                player.playSound(player.getLocation(), Sound.BLOCK_ANVIL_USE, 0.7f, 1.4f);
+                player.sendMessage(ChatColor.GREEN + res.message);
+            } else {
+                player.sendMessage(ChatColor.RED + res.message);
+            }
+            event.setCancelled(true); // always cancel if the player used a raffle token
+            return true;
+        }
+
+        // off hand token -> main hand armor
+        if (offIsRaffle && isArmor(main)) {
+            RaffleService.ApplyResult res = RaffleService.applyToArmor(main);
+            if (res.success) {
+                consumeOneFromHand(player, EquipmentSlot.OFF_HAND);
+                player.playSound(player.getLocation(), Sound.BLOCK_ANVIL_USE, 0.7f, 1.4f);
+                player.sendMessage(ChatColor.GREEN + res.message);
+            } else {
+                player.sendMessage(ChatColor.RED + res.message);
+            }
+            event.setCancelled(true);
+            return true;
+        }
+
+        // If they are holding a raffle token but not holding armor, cancel and message (prevents “using” firework star)
+        if (mainIsRaffle || offIsRaffle) {
+            player.sendMessage(ChatColor.RED + "Hold armor in the other hand to apply the raffle token.");
+            event.setCancelled(true);
+            return true;
+        }
+
+        return false;
     }
 
     /* =========================
@@ -254,9 +309,8 @@ public final class AddOnListener implements Listener {
             case FIRE_RESIST -> keys.fireResLevel();
             case HEALTH_BOOST -> keys.healthBoostLevel();
             case NIGHT_VISION -> keys.nightVisionLevel();
-           
-            case WATER_BREATHING -> keys.custom("water_breathing_level");
 
+            case WATER_BREATHING -> keys.custom("water_breathing_level");
         };
     }
 
