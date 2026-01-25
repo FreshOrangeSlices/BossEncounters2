@@ -1,12 +1,8 @@
-package com.orangeslices.bossencounters.raffle.listener;
+package com.orangeslices.bossencounters.raffle.listeners;
 
 import com.orangeslices.bossencounters.raffle.RaffleKeys;
-import io.papermc.paper.event.player.PlayerArmorChangeEvent;
 import org.bukkit.Bukkit;
-import org.bukkit.Location;
 import org.bukkit.Material;
-import org.bukkit.Sound;
-import org.bukkit.attribute.Attribute;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.entity.Animals;
 import org.bukkit.entity.Cow;
@@ -16,27 +12,45 @@ import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
+import org.bukkit.event.block.BlockDispenseArmorEvent;
+import org.bukkit.event.entity.PlayerDeathEvent;
+import org.bukkit.event.inventory.InventoryClickEvent;
+import org.bukkit.event.inventory.InventoryDragEvent;
+import org.bukkit.event.player.*;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.persistence.PersistentDataContainer;
 import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.plugin.Plugin;
-import org.bukkit.potion.PotionEffect;
-import org.bukkit.potion.PotionEffectType;
 import org.bukkit.scheduler.BukkitRunnable;
 import org.bukkit.util.Vector;
+import org.bukkit.Location;
+import org.bukkit.Sound;
+import org.bukkit.attribute.Attribute;
+import org.bukkit.potion.PotionEffect;
+import org.bukkit.potion.PotionEffectType;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
+/**
+ * Bukkit-safe armor equip detection.
+ *
+ * We DO NOT rely on Paper events.
+ * We detect changes by snapshotting armor contents per-player and comparing after
+ * common actions that change armor: clicks, drags, right-click equip, join, respawn, etc.
+ */
 public final class ArmorEquipListener implements Listener {
 
     private final Plugin plugin;
 
+    // uuid -> last known armor snapshot (helmet, chest, legs, boots)
+    private final Map<UUID, ItemStack[]> lastArmor = new ConcurrentHashMap<>();
+
     // uuid -> (effectId -> lastTriggerMillis)
     private final Map<UUID, Map<String, Long>> cooldowns = new ConcurrentHashMap<>();
 
-    // Mandator Cow: only 1 active per player
+    // Mandator cow: only 1 active per player
     private final Map<UUID, UUID> activeMandatorCow = new ConcurrentHashMap<>();
 
     public ArmorEquipListener(Plugin plugin) {
@@ -44,17 +58,141 @@ public final class ArmorEquipListener implements Listener {
         RaffleKeys.init(plugin);
     }
 
+    // -------------------------
+    // Event triggers (schedule compare)
+    // -------------------------
+
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
-    public void onArmorChange(PlayerArmorChangeEvent event) {
-        Player player = event.getPlayer();
-        ItemStack newItem = event.getNewItem();
+    public void onJoin(PlayerJoinEvent e) {
+        snapshot(e.getPlayer());
+    }
 
-        if (newItem == null || newItem.getType() == Material.AIR) return;
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void onQuit(PlayerQuitEvent e) {
+        lastArmor.remove(e.getPlayer().getUniqueId());
+        cooldowns.remove(e.getPlayer().getUniqueId());
+        activeMandatorCow.remove(e.getPlayer().getUniqueId());
+    }
 
-        // Only trigger when actually equipping armor
-        if (!isArmor(newItem)) return;
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void onRespawn(PlayerRespawnEvent e) {
+        scheduleCompare(e.getPlayer());
+    }
 
-        ItemMeta meta = newItem.getItemMeta();
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void onInventoryClick(InventoryClickEvent e) {
+        if (!(e.getWhoClicked() instanceof Player p)) return;
+        scheduleCompare(p);
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void onInventoryDrag(InventoryDragEvent e) {
+        if (!(e.getWhoClicked() instanceof Player p)) return;
+        scheduleCompare(p);
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void onInteract(PlayerInteractEvent e) {
+        // Right-click equipping armor from hand can happen here
+        scheduleCompare(e.getPlayer());
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void onItemHeld(PlayerItemHeldEvent e) {
+        // Some clients equip via hotbar swapping + click sequences; cheap to check
+        scheduleCompare(e.getPlayer());
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void onSwapHand(PlayerSwapHandItemsEvent e) {
+        scheduleCompare(e.getPlayer());
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void onDispenseArmor(BlockDispenseArmorEvent e) {
+        if (e.getTargetEntity() instanceof Player p) {
+            scheduleCompare(p);
+        }
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void onDeath(PlayerDeathEvent e) {
+        // armor changes to empty; snapshot so we don't “trigger” on forced removal
+        snapshot(e.getEntity());
+    }
+
+    private void scheduleCompare(Player p) {
+        // Compare 1 tick later so inventory state is finalized
+        Bukkit.getScheduler().runTask(plugin, () -> compareAndTrigger(p));
+    }
+
+    // -------------------------
+    // Snapshot + compare
+    // -------------------------
+
+    private void snapshot(Player p) {
+        lastArmor.put(p.getUniqueId(), getArmorSnapshot(p));
+    }
+
+    private void compareAndTrigger(Player p) {
+        UUID uuid = p.getUniqueId();
+        ItemStack[] prev = lastArmor.get(uuid);
+        ItemStack[] curr = getArmorSnapshot(p);
+
+        if (prev == null) {
+            lastArmor.put(uuid, curr);
+            return;
+        }
+
+        // For each slot, if it changed and now has armor, treat as “equipped”
+        for (int i = 0; i < 4; i++) {
+            if (!isSame(prev[i], curr[i]) && isArmor(curr[i])) {
+                onArmorEquipped(p, curr[i]);
+            }
+        }
+
+        lastArmor.put(uuid, curr);
+    }
+
+    private ItemStack[] getArmorSnapshot(Player p) {
+        ItemStack[] a = p.getInventory().getArmorContents();
+        // Bukkit returns array [boots, leggings, chestplate, helmet] in many versions.
+        // To make it consistent for our compare, normalize to [helmet, chest, legs, boots].
+        ItemStack boots = safeClone(a, 0);
+        ItemStack legs = safeClone(a, 1);
+        ItemStack chest = safeClone(a, 2);
+        ItemStack helm = safeClone(a, 3);
+
+        return new ItemStack[]{helm, chest, legs, boots};
+    }
+
+    private ItemStack safeClone(ItemStack[] arr, int idx) {
+        if (arr == null || idx < 0 || idx >= arr.length || arr[idx] == null) return null;
+        return arr[idx].clone();
+    }
+
+    private boolean isSame(ItemStack a, ItemStack b) {
+        if (a == null && b == null) return true;
+        if (a == null || b == null) return false;
+        // isSimilar ignores stack size; perfect for our purpose
+        return a.isSimilar(b);
+    }
+
+    private boolean isArmor(ItemStack item) {
+        if (item == null || item.getType() == Material.AIR) return false;
+        String name = item.getType().name();
+        return name.endsWith("_HELMET")
+                || name.endsWith("_CHESTPLATE")
+                || name.endsWith("_LEGGINGS")
+                || name.endsWith("_BOOTS");
+    }
+
+    // -------------------------
+    // Equip action: read PDC + (currently) minimal triggers
+    // -------------------------
+
+    private void onArmorEquipped(Player player, ItemStack armorPiece) {
+        ItemMeta meta = armorPiece.getItemMeta();
         if (meta == null) return;
 
         PersistentDataContainer pdc = meta.getPersistentDataContainer();
@@ -64,17 +202,35 @@ public final class ArmorEquipListener implements Listener {
         Map<String, Integer> effects = decodeEffects(encoded);
         if (effects.isEmpty()) return;
 
-        // Fire ALL effects stored on that piece, once, on equip
+        // IMPORTANT: This is still scaffolding.
+        // We can later switch this to "lore-only verification" if you want zero gameplay impact.
         for (Map.Entry<String, Integer> e : effects.entrySet()) {
-            String effectId = e.getKey();
-            int level = Math.max(1, e.getValue());
-            triggerEffect(player, effectId, level);
+            triggerEffect(player, e.getKey(), Math.max(1, e.getValue()));
         }
     }
 
-    // ----------------------------
-    // Effect execution + cooldown
-    // ----------------------------
+    /**
+     * Encoded format: id:lvl|id:lvl|id:lvl
+     */
+    private Map<String, Integer> decodeEffects(String encoded) {
+        Map<String, Integer> out = new HashMap<>();
+        String[] parts = encoded.split("\\|");
+        for (String part : parts) {
+            String p = part.trim();
+            if (p.isEmpty()) continue;
+
+            String[] kv = p.split(":");
+            String id = kv[0].trim().toLowerCase();
+            if (id.isEmpty()) continue;
+
+            int lvl = 1;
+            if (kv.length >= 2) {
+                try { lvl = Integer.parseInt(kv[1].trim()); } catch (NumberFormatException ignored) {}
+            }
+            out.put(id, Math.max(1, lvl));
+        }
+        return out;
+    }
 
     private void triggerEffect(Player player, String idRaw, int level) {
         String id = (idRaw == null ? "" : idRaw.trim().toLowerCase());
@@ -83,24 +239,16 @@ public final class ArmorEquipListener implements Listener {
         long now = System.currentTimeMillis();
         long cdMs = getCooldownMs(id);
 
-        // cooldown check
         Map<String, Long> map = cooldowns.computeIfAbsent(player.getUniqueId(), k -> new ConcurrentHashMap<>());
         long last = map.getOrDefault(id, 0L);
         if (cdMs > 0 && (now - last) < cdMs) return;
-
         map.put(id, now);
 
         switch (id) {
-            // ----------------
-            // GOOD effects
-            // ----------------
+            // GOOD (simple placeholders)
             case "health_boost" -> {
-                // Trigger-only: gives a temporary buff; re-equip can refresh (cooldown prevents spam)
-                // Level scales amplifier (lvl1=0, lvl2=1, etc), clamped.
                 int amp = Math.min(3, Math.max(0, level - 1));
-                int duration = 20 * 60; // 60s
-                player.addPotionEffect(new PotionEffect(PotionEffectType.HEALTH_BOOST, duration, amp, true, false, true));
-                // Heal up to new max a little (nice UX)
+                player.addPotionEffect(new PotionEffect(PotionEffectType.HEALTH_BOOST, 20 * 60, amp, true, false, true));
                 double max = player.getAttribute(Attribute.MAX_HEALTH) != null
                         ? Objects.requireNonNull(player.getAttribute(Attribute.MAX_HEALTH)).getValue()
                         : 20.0;
@@ -108,21 +256,17 @@ public final class ArmorEquipListener implements Listener {
                 player.sendMessage("§a[Raffle] Health Boost triggered (lvl " + level + ").");
             }
             case "fire_res" -> {
-                int duration = 20 * 60; // 60s
-                player.addPotionEffect(new PotionEffect(PotionEffectType.FIRE_RESISTANCE, duration, 0, true, false, true));
+                player.addPotionEffect(new PotionEffect(PotionEffectType.FIRE_RESISTANCE, 20 * 60, 0, true, false, true));
                 player.sendMessage("§a[Raffle] Fire Resistance triggered.");
             }
             case "water_breathing" -> {
-                int duration = 20 * 60; // 60s
-                player.addPotionEffect(new PotionEffect(PotionEffectType.WATER_BREATHING, duration, 0, true, false, true));
+                player.addPotionEffect(new PotionEffect(PotionEffectType.WATER_BREATHING, 20 * 60, 0, true, false, true));
                 player.sendMessage("§a[Raffle] Water Breathing triggered.");
             }
 
-            // ----------------
-            // CURSES (trigger on equip only)
-            // ----------------
+            // CURSES (simple placeholders)
             case "terror" -> {
-                player.addPotionEffect(new PotionEffect(PotionEffectType.DARKNESS, 20 * 20, 0, true, false, true)); // 20s
+                player.addPotionEffect(new PotionEffect(PotionEffectType.DARKNESS, 20 * 20, 0, true, false, true));
                 player.playSound(player.getLocation(), Sound.ENTITY_WARDEN_ROAR, 0.8f, 1.0f);
                 player.sendMessage("§c[Raffle] Terror...");
             }
@@ -131,10 +275,8 @@ public final class ArmorEquipListener implements Listener {
                 playEchoBurst(player);
             }
             case "broken_compass" -> {
-                // Short disorientation burst
-                player.addPotionEffect(new PotionEffect(PotionEffectType.NAUSEA, 20 * 4, 0, true, false, true)); // 4s
-                player.addPotionEffect(new PotionEffect(PotionEffectType.SLOWNESS, 20 * 2, 0, true, false, true)); // 2s
-                player.playSound(player.getLocation(), Sound.ENTITY_ENDERMAN_AMBIENT, 0.6f, 0.8f);
+                player.addPotionEffect(new PotionEffect(PotionEffectType.NAUSEA, 20 * 4, 0, true, false, true));
+                player.addPotionEffect(new PotionEffect(PotionEffectType.SLOWNESS, 20 * 2, 0, true, false, true));
                 player.sendMessage("§c[Raffle] Your senses twist...");
             }
             case "mandators_curse" -> {
@@ -146,49 +288,33 @@ public final class ArmorEquipListener implements Listener {
                 ogreRush(player);
             }
             case "shadow_twin" -> {
-                // Placeholder-lite implementation (safe for no-deps)
-                player.playSound(player.getLocation(), Sound.AMBIENT_CAVE, 0.7f, 0.7f);
                 player.sendMessage("§c[Raffle] You feel watched... (Shadow Twin)");
             }
-
-            default -> {
-                // Unknown IDs won’t break the server
-                player.sendMessage("§7[Raffle] (Unimplemented effect: " + id + ")");
-            }
+            default -> player.sendMessage("§7[Raffle] (Unimplemented effect: " + id + ")");
         }
     }
 
     private long getCooldownMs(String id) {
         FileConfiguration cfg = plugin.getConfig();
 
-        // Allow either style:
-        // raffle.cooldowns.terror_ms: 120000
-        // raffle.cooldowns.terror: 120000
         long v = cfg.getLong("raffle.cooldowns." + id + "_ms", -1L);
         if (v >= 0) return v;
 
         v = cfg.getLong("raffle.cooldowns." + id, -1L);
         if (v >= 0) return v;
 
-        // sane defaults (anti-spam)
         return switch (id) {
-            case "terror" -> 120_000L;          // 2 min
-            case "echoes" -> 45_000L;           // 45s
-            case "broken_compass" -> 45_000L;   // 45s
-            case "mandators_curse" -> 120_000L; // 2 min
-            case "ogre" -> 90_000L;             // 90s
-            case "shadow_twin" -> 120_000L;     // 2 min
-            case "health_boost", "fire_res", "water_breathing" -> 10_000L; // 10s
+            case "terror" -> 120_000L;
+            case "echoes" -> 45_000L;
+            case "broken_compass" -> 45_000L;
+            case "mandators_curse" -> 120_000L;
+            case "ogre" -> 90_000L;
+            case "shadow_twin" -> 120_000L;
             default -> 10_000L;
         };
     }
 
-    // ----------------------------
-    // Curse implementations
-    // ----------------------------
-
     private void playEchoBurst(Player player) {
-        // 6 quick “creepy” sounds over ~12 seconds
         List<Sound> sounds = List.of(
                 Sound.AMBIENT_CAVE,
                 Sound.ENTITY_ENDERMAN_STARE,
@@ -198,24 +324,20 @@ public final class ArmorEquipListener implements Listener {
         );
 
         new BukkitRunnable() {
-            int ticks = 0;
             int played = 0;
+            final Random r = new Random();
 
             @Override public void run() {
                 if (!player.isOnline()) { cancel(); return; }
-                ticks += 20;
-
-                Sound s = sounds.get(new Random().nextInt(sounds.size()));
-                player.playSound(player.getLocation(), s, 0.7f, 0.9f + (new Random().nextFloat() * 0.2f));
+                Sound s = sounds.get(r.nextInt(sounds.size()));
+                player.playSound(player.getLocation(), s, 0.7f, 0.9f + (r.nextFloat() * 0.2f));
                 played++;
-
                 if (played >= 6) cancel();
             }
-        }.runTaskTimer(plugin, 0L, 40L); // every 2s
+        }.runTaskTimer(plugin, 0L, 40L);
     }
 
     private void spawnMandatorCow(Player player) {
-        // Only one active at a time
         UUID uuid = player.getUniqueId();
         UUID existing = activeMandatorCow.get(uuid);
         if (existing != null) {
@@ -225,11 +347,8 @@ public final class ArmorEquipListener implements Listener {
 
         Location spawnAt = player.getLocation().clone().add(player.getLocation().getDirection().normalize().multiply(-2));
         Cow cow = (Cow) player.getWorld().spawnEntity(spawnAt, EntityType.COW);
-        cow.setCustomNameVisible(false);
-
         activeMandatorCow.put(uuid, cow.getUniqueId());
 
-        // Chase for 20s, knockback on touch
         new BukkitRunnable() {
             int lifeTicks = 0;
 
@@ -251,7 +370,6 @@ public final class ArmorEquipListener implements Listener {
 
                 if (dist > 0.1) {
                     dir.normalize();
-                    // “Speed 2-ish” feel without pathfinding spam
                     cow.setVelocity(dir.multiply(0.35));
                 }
 
@@ -259,8 +377,7 @@ public final class ArmorEquipListener implements Listener {
                     Vector kb = pLoc.toVector().subtract(cLoc.toVector()).normalize().multiply(1.2);
                     kb.setY(0.35);
                     player.setVelocity(kb);
-                    player.damage(1.0); // tiny sting
-                    player.playSound(player.getLocation(), Sound.ENTITY_COW_HURT, 0.9f, 0.8f);
+                    player.damage(1.0);
                 }
             }
 
@@ -272,7 +389,6 @@ public final class ArmorEquipListener implements Listener {
     }
 
     private void ogreRush(Player player) {
-        // For 15s, push up to 10 nearby passive mobs toward the player (lightweight, capped)
         int durationTicks = 15 * 20;
         int radius = 24;
         int maxMobs = 10;
@@ -298,49 +414,9 @@ public final class ArmorEquipListener implements Listener {
                     if (a.isDead()) continue;
                     Vector dir = pLoc.toVector().subtract(a.getLocation().toVector());
                     if (dir.length() < 0.1) continue;
-                    dir.normalize();
-                    a.setVelocity(dir.multiply(0.25));
+                    a.setVelocity(dir.normalize().multiply(0.25));
                 }
             }
         }.runTaskTimer(plugin, 0L, 10L);
-    }
-
-    // ----------------------------
-    // Utilities
-    // ----------------------------
-
-    private boolean isArmor(ItemStack item) {
-        if (item == null || item.getType() == Material.AIR) return false;
-        String name = item.getType().name();
-        return name.endsWith("_HELMET")
-                || name.endsWith("_CHESTPLATE")
-                || name.endsWith("_LEGGINGS")
-                || name.endsWith("_BOOTS");
-    }
-
-    /**
-     * Encoded format: id:lvl|id:lvl|id:lvl
-     */
-    private Map<String, Integer> decodeEffects(String encoded) {
-        Map<String, Integer> out = new HashMap<>();
-        if (encoded == null || encoded.trim().isEmpty()) return out;
-
-        String[] parts = encoded.split("\\|");
-        for (String part : parts) {
-            String p = part.trim();
-            if (p.isEmpty()) continue;
-
-            String[] kv = p.split(":");
-            String id = kv[0].trim().toLowerCase();
-            if (id.isEmpty()) continue;
-
-            int lvl = 1;
-            if (kv.length >= 2) {
-                try { lvl = Integer.parseInt(kv[1].trim()); }
-                catch (NumberFormatException ignored) {}
-            }
-            out.put(id, Math.max(1, lvl));
-        }
-        return out;
     }
 }
