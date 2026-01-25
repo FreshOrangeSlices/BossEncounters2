@@ -1,6 +1,7 @@
 
 package com.orangeslices.bossencounters.boss.combat;
 
+import com.orangeslices.bossencounters.BossEncountersPlugin;
 import org.bukkit.ChatColor;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.entity.LivingEntity;
