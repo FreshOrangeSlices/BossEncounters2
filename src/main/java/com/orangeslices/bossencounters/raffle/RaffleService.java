@@ -130,7 +130,10 @@ public final class RaffleService {
         pdc.set(RaffleKeys.ARMOR_HAS_CURSE, PersistentDataType.BYTE, (byte) (hasCurse ? 1 : 0));
 
         armor.setItemMeta(meta);
-
+    RaffleLoreUtil.updateVagueLore(
+    armorItem,
+    plugin.getConfig().getInt("raffle.max_slots_per_armor", 3)
+);
         String msg = duplicate
                 ? "Effect upgraded: " + rolled + " -> lvl " + newLevel + " (slots " + slotsUsed + "/" + getMaxSlots() + ")"
                 : "Effect added: " + rolled + " (slots " + slotsUsed + "/" + getMaxSlots() + ")";
