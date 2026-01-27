@@ -147,6 +147,7 @@ raffle:
   max_slots_per_armor: 3
 
   # Negative effects (one max per armor)
+  # (These are your internal IDs, not vanilla potion names)
   curses:
     - terror
     - echoes
@@ -159,11 +160,15 @@ raffle:
   # Equal chance
   # Duplicates level GOOD effects
   effects:
+    # GOOD
     - health_boost
     - fire_res
     - water_breathing
+
+    # CURSES also appear in the unified pool
     - terror
     - echoes
     - broken_compass
     - shadow_twin
     - mandators_curse
+    - ogre
