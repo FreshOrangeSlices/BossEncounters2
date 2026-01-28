@@ -1,246 +1,156 @@
 package com.orangeslices.bossencounters.raffle;
 
-import org.bukkit.Material;
+import org.bukkit.NamespacedKey;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.persistence.PersistentDataContainer;
 import org.bukkit.persistence.PersistentDataType;
-import org.bukkit.plugin.Plugin;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import java.util.*;
+import java.util.concurrent.ThreadLocalRandom;
+import java.util.stream.Collectors;
 
-/**
- * Implements the OFFICIAL RULES DOC:
- * - Armor only
- * - 3 total slots max
- * - Each apply consumes 1 slot
- * - Unified pool (good + curse), equal chance
- * - If armor already has any curse -> only GOOD can roll afterward
- * - GOOD duplicates level up (+1)
- * - CURSES never level
- * - At most 1 curse per armor (enforced by pool filtering once cursed)
- */
 public final class RaffleService {
+
+    // PDC keys (self-contained, won’t rely on your old keys)
+    private static NamespacedKey KEY_SLOTS_USED(JavaPlugin plugin) { return new NamespacedKey(plugin, "raffle_slots_used"); }
+    private static NamespacedKey KEY_GOOD_LEVELS(JavaPlugin plugin) { return new NamespacedKey(plugin, "raffle_good_levels"); } // "health_boost=2;fire_res=1"
+    private static NamespacedKey KEY_CURSE(JavaPlugin plugin) { return new NamespacedKey(plugin, "raffle_curse"); } // "terror" etc
 
     private RaffleService() {}
 
-    /** Result info for messaging/debug later. */
-    public static final class ApplyResult {
-        public final boolean success;
-        public final String message;
-        public final String rolledEffectId;
-        public final boolean wasDuplicate;
-        public final int newLevel;
-        public final int slotsUsed;
-
-        private ApplyResult(boolean success, String message, String rolledEffectId, boolean wasDuplicate, int newLevel, int slotsUsed) {
-            this.success = success;
-            this.message = message;
-            this.rolledEffectId = rolledEffectId;
-            this.wasDuplicate = wasDuplicate;
-            this.newLevel = newLevel;
-            this.slotsUsed = slotsUsed;
+    public static RaffleApplyResult applyToArmor(JavaPlugin plugin, ItemStack armorItem) {
+        if (plugin == null) throw new IllegalArgumentException("plugin is null");
+        if (armorItem == null || armorItem.getType().isAir()) {
+            return RaffleApplyResult.fail("No armor item found.", 0, getMaxSlots(plugin));
         }
 
-        public static ApplyResult fail(String msg) {
-            return new ApplyResult(false, msg, null, false, 0, 0);
+        ItemMeta meta = armorItem.getItemMeta();
+        if (meta == null) return RaffleApplyResult.fail("That item can’t hold add-ons.", 0, getMaxSlots(plugin));
+
+        FileConfiguration cfg = plugin.getConfig();
+        int maxSlots = getMaxSlots(plugin);
+
+        List<String> effects = normalizeList(cfg.getStringList("raffle.effects"));
+        List<String> curses = normalizeList(cfg.getStringList("raffle.curses"));
+
+        if (effects.isEmpty()) {
+            return RaffleApplyResult.fail("Raffle pool is empty. Check config.yml -> raffle.effects", getUsedSlots(plugin, meta), maxSlots);
         }
 
-        public static ApplyResult ok(String msg, String id, boolean dup, int lvl, int slotsUsed) {
-            return new ApplyResult(true, msg, id, dup, lvl, slotsUsed);
-        }
-    }
-
-    public static ApplyResult applyToArmor(ItemStack armor) {
-        if (!isArmor(armor)) {
-            return ApplyResult.fail("Target item is not armor.");
-        }
-
-        RaffleKeys.initAuto();
-
-        ItemMeta meta = armor.getItemMeta();
-        if (meta == null) return ApplyResult.fail("Armor has no meta.");
+        // Build pools
+        Set<String> curseSet = new HashSet<>(curses);
+        List<String> goodPool = effects.stream().filter(id -> !curseSet.contains(id)).collect(Collectors.toList());
+        List<String> unifiedPool = new ArrayList<>(effects);
 
         PersistentDataContainer pdc = meta.getPersistentDataContainer();
 
-        int slotsUsed = getInt(pdc, RaffleKeys.ARMOR_SLOTS_USED, 0);
-        if (slotsUsed >= getMaxSlots()) {
-            return ApplyResult.fail("This armor is already full.");
+        int usedSlots = getUsedSlots(plugin, meta);
+        if (usedSlots >= maxSlots) {
+            return RaffleApplyResult.fail("This armor is out of add-on slots.", usedSlots, maxSlots);
         }
 
-        boolean hasCurse = getByte(pdc, RaffleKeys.ARMOR_HAS_CURSE, (byte) 0) == (byte) 1;
+        String existingCurse = pdc.get(KEY_CURSE(plugin), PersistentDataType.STRING);
+        boolean hasCurse = existingCurse != null && !existingCurse.isBlank();
 
-        // Load pool (lazy)
-        if (RafflePool.isEmpty()) {
-            RafflePool.reloadFromConfig();
-        }
-
-        List<String> basePool = RafflePool.getPool();
-        if (basePool.isEmpty()) {
-            return ApplyResult.fail("Raffle pool is empty. Check config.yml -> raffle.effects");
-        }
-
-        Set<String> curseIds = getCurseIdSet();
-
-        // If already cursed, remove all curses from available rolls
-        List<String> rollPool = new ArrayList<>(basePool.size());
-        for (String id : basePool) {
-            if (hasCurse && curseIds.contains(id)) continue;
-            rollPool.add(id);
-        }
+        // If you already have a curse, future rolls are GOOD only
+        List<String> rollPool = hasCurse ? goodPool : unifiedPool;
 
         if (rollPool.isEmpty()) {
-            return ApplyResult.fail("No valid effects available to roll (pool filtered empty).");
+            return RaffleApplyResult.fail("No valid effects to roll (pool empty after filters).", usedSlots, maxSlots);
         }
 
-        // Read existing effects map from PDC string
-        Map<String, Integer> effects = decodeEffects(getString(pdc, RaffleKeys.ARMOR_EFFECTS, ""));
+        String rolled = rollPool.get(ThreadLocalRandom.current().nextInt(rollPool.size()));
 
-        // Roll 1 uniformly
-        String rolled = rollPool.get(new Random().nextInt(rollPool.size()));
-        boolean isCurse = curseIds.contains(rolled);
+        boolean rolledIsCurse = curseSet.contains(rolled);
 
-        // If it would add a curse but we already have one, block (shouldn't happen due to filtering)
-        if (hasCurse && isCurse) {
-            return ApplyResult.fail("Armor is already cursed; cannot add another curse.");
+        // If rolled a curse but you already have one, force GOOD roll
+        if (rolledIsCurse && hasCurse) {
+            if (goodPool.isEmpty()) {
+                return RaffleApplyResult.fail("No GOOD effects available after curse lock.", usedSlots, maxSlots);
+            }
+            rolled = goodPool.get(ThreadLocalRandom.current().nextInt(goodPool.size()));
+            rolledIsCurse = false;
         }
 
-        boolean duplicate = effects.containsKey(rolled);
-        int newLevel;
+        // Apply: slots ALWAYS increase by 1 on success
+        usedSlots++;
 
-        if (isCurse) {
-            // Curses never level; always base
-            newLevel = 1;
-            effects.put(rolled, 1);
-            hasCurse = true;
-        } else {
-            int current = effects.getOrDefault(rolled, 0);
-            newLevel = (current <= 0) ? 1 : (current + 1);
-            effects.put(rolled, newLevel);
+        if (rolledIsCurse) {
+            // Max 1 curse per armor
+            if (hasCurse) {
+                return RaffleApplyResult.fail("This armor already bears a curse.", usedSlots - 1, maxSlots);
+            }
+            pdc.set(KEY_CURSE(plugin), PersistentDataType.STRING, rolled);
+            pdc.set(KEY_SLOTS_USED(plugin), PersistentDataType.INTEGER, usedSlots);
+
+            armorItem.setItemMeta(meta);
+            return RaffleApplyResult.ok(rolled, true, usedSlots, maxSlots);
         }
 
-        // IMPORTANT RULE: every application consumes a slot, even duplicates
-        slotsUsed += 1;
+        // GOOD effect: duplicates level up (but still consumes slot)
+        Map<String, Integer> levels = readGoodLevels(plugin, pdc);
+        int newLevel = levels.getOrDefault(rolled, 0) + 1;
+        levels.put(rolled, newLevel);
 
-        // Save back to PDC
-        pdc.set(RaffleKeys.ARMOR_EFFECTS, PersistentDataType.STRING, encodeEffects(effects));
-        pdc.set(RaffleKeys.ARMOR_SLOTS_USED, PersistentDataType.INTEGER, slotsUsed);
-        pdc.set(RaffleKeys.ARMOR_HAS_CURSE, PersistentDataType.BYTE, (byte) (hasCurse ? 1 : 0));
+        writeGoodLevels(plugin, pdc, levels);
+        pdc.set(KEY_SLOTS_USED(plugin), PersistentDataType.INTEGER, usedSlots);
 
-        armor.setItemMeta(meta);
-    RaffleLoreUtil.updateVagueLore(
-    armorItem,
-    plugin.getConfig().getInt("raffle.max_slots_per_armor", 3)
-);
-        String msg = duplicate
-                ? "Effect upgraded: " + rolled + " -> lvl " + newLevel + " (slots " + slotsUsed + "/" + getMaxSlots() + ")"
-                : "Effect added: " + rolled + " (slots " + slotsUsed + "/" + getMaxSlots() + ")";
-
-        return ApplyResult.ok(msg, rolled, duplicate, newLevel, slotsUsed);
+        armorItem.setItemMeta(meta);
+        return RaffleApplyResult.ok(rolled, false, usedSlots, maxSlots);
     }
 
-    // ----------------------------
-    // Helpers
-    // ----------------------------
-
-    private static int getMaxSlots() {
-        Plugin plugin = JavaPlugin.getProvidingPlugin(RaffleService.class);
+    private static int getMaxSlots(JavaPlugin plugin) {
         return plugin.getConfig().getInt("raffle.max_slots_per_armor", 3);
     }
 
-    /** Prefer config list raffle.curses; fallback to a sensible default set. */
-    private static Set<String> getCurseIdSet() {
-        Plugin plugin = JavaPlugin.getProvidingPlugin(RaffleService.class);
-        FileConfiguration cfg = plugin.getConfig();
-
-        List<String> configured = cfg.getStringList("raffle.curses");
-        Set<String> out = new HashSet<>();
-        if (configured != null && !configured.isEmpty()) {
-            for (String s : configured) {
-                if (s == null) continue;
-                String t = s.trim().toLowerCase();
-                if (!t.isEmpty()) out.add(t);
-            }
-            return out;
-        }
-
-        // Fallback defaults (matches your current shortlist)
-        out.add("terror");
-        out.add("echoes");
-        out.add("broken_compass");
-        out.add("shadow_twin");
-        out.add("mandators_curse");
-        out.add("ogre");
-        return out;
+    private static int getUsedSlots(JavaPlugin plugin, ItemMeta meta) {
+        Integer val = meta.getPersistentDataContainer().get(KEY_SLOTS_USED(plugin), PersistentDataType.INTEGER);
+        return val == null ? 0 : Math.max(0, val);
     }
 
-    private static boolean isArmor(ItemStack item) {
-        if (item == null || item.getType() == Material.AIR) return false;
-        Material m = item.getType();
-        String name = m.name();
-        return name.endsWith("_HELMET")
-                || name.endsWith("_CHESTPLATE")
-                || name.endsWith("_LEGGINGS")
-                || name.endsWith("_BOOTS");
+    private static List<String> normalizeList(List<String> raw) {
+        if (raw == null) return Collections.emptyList();
+        return raw.stream()
+                .filter(Objects::nonNull)
+                .map(String::trim)
+                .filter(s -> !s.isEmpty())
+                .map(String::toLowerCase) // your config uses ids like "health_boost"
+                .collect(Collectors.toList());
     }
 
-    private static int getInt(PersistentDataContainer pdc, org.bukkit.NamespacedKey key, int def) {
-        Integer v = pdc.get(key, PersistentDataType.INTEGER);
-        return v != null ? v : def;
-    }
-
-    private static byte getByte(PersistentDataContainer pdc, org.bukkit.NamespacedKey key, byte def) {
-        Byte v = pdc.get(key, PersistentDataType.BYTE);
-        return v != null ? v : def;
-    }
-
-    private static String getString(PersistentDataContainer pdc, org.bukkit.NamespacedKey key, String def) {
-        String v = pdc.get(key, PersistentDataType.STRING);
-        return v != null ? v : def;
-    }
-
-    /**
-     * Encodes unique effects as: id:lvl|id:lvl|id:lvl
-     * Levels only matter for GOOD; curses will always store lvl 1.
-     */
-    static String encodeEffects(Map<String, Integer> effects) {
-        if (effects == null || effects.isEmpty()) return "";
-        StringBuilder sb = new StringBuilder();
-        // stable order (nice for debugging)
-        List<String> keys = new ArrayList<>(effects.keySet());
-        Collections.sort(keys);
-        for (String id : keys) {
-            int lvl = Math.max(1, effects.getOrDefault(id, 1));
-            if (sb.length() > 0) sb.append("|");
-            sb.append(id).append(":").append(lvl);
-        }
-        return sb.toString();
-    }
-
-    static Map<String, Integer> decodeEffects(String encoded) {
+    private static Map<String, Integer> readGoodLevels(JavaPlugin plugin, PersistentDataContainer pdc) {
+        String encoded = pdc.get(KEY_GOOD_LEVELS(plugin), PersistentDataType.STRING);
         Map<String, Integer> out = new HashMap<>();
-        if (encoded == null || encoded.trim().isEmpty()) return out;
+        if (encoded == null || encoded.isBlank()) return out;
 
-        String[] parts = encoded.split("\\|");
-        for (String part : parts) {
-            String p = part.trim();
-            if (p.isEmpty()) continue;
-
-            String[] kv = p.split(":");
-            String id = kv[0].trim().toLowerCase();
-            if (id.isEmpty()) continue;
-
-            int lvl = 1;
-            if (kv.length >= 2) {
-                try {
-                    lvl = Integer.parseInt(kv[1].trim());
-                } catch (NumberFormatException ignored) {}
-            }
-            out.put(id, Math.max(1, lvl));
+        String[] pairs = encoded.split(";");
+        for (String pair : pairs) {
+            String p = pair.trim();
+            if (p.isEmpty() || !p.contains("=")) continue;
+            String[] kv = p.split("=", 2);
+            String key = kv[0].trim().toLowerCase();
+            String val = kv[1].trim();
+            try {
+                int lvl = Integer.parseInt(val);
+                if (!key.isEmpty() && lvl > 0) out.put(key, lvl);
+            } catch (NumberFormatException ignored) {}
         }
         return out;
+    }
+
+    private static void writeGoodLevels(JavaPlugin plugin, PersistentDataContainer pdc, Map<String, Integer> levels) {
+        // stable encoding
+        String encoded = levels.entrySet().stream()
+                .sorted(Map.Entry.comparingByKey())
+                .map(e -> e.getKey().toLowerCase() + "=" + Math.max(1, e.getValue()))
+                .collect(Collectors.joining(";"));
+        if (encoded.isBlank()) {
+            pdc.remove(KEY_GOOD_LEVELS(plugin));
+        } else {
+            pdc.set(KEY_GOOD_LEVELS(plugin), PersistentDataType.STRING, encoded);
+        }
     }
 }
-
