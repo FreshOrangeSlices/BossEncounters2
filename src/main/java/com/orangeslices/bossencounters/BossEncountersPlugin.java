@@ -1,5 +1,6 @@
 package com.orangeslices.bossencounters;
 
+import com.orangeslices.bossencounters.raffle.RaffleTokenFactory;
 import com.orangeslices.bossencounters.raffle.RaffleKeys;
 import com.orangeslices.bossencounters.raffle.RafflePool;
 import com.orangeslices.bossencounters.raffle.RaffleService;
