@@ -1,5 +1,8 @@
 package com.orangeslices.bossencounters;
 
+import com.orangeslices.bossencounters.raffle.RaffleKeys;
+import com.orangeslices.bossencounters.raffle.RafflePool;
+import com.orangeslices.bossencounters.raffle.RaffleService;
 import org.bukkit.ChatColor;
 import org.bukkit.Location;
 import org.bukkit.NamespacedKey;
@@ -18,6 +21,10 @@ public final class BossEncountersPlugin extends JavaPlugin {
     private NamespacedKey bossKey;
     private BossApplier bossApplier;
 
+    // Raffle system core (new)
+    private RafflePool rafflePool;
+    private RaffleService raffleService;
+
     // Track active bosses per world (UUID key = world UUID)
     private final Map<UUID, Integer> activeBossesByWorld = new ConcurrentHashMap<>();
 
@@ -33,9 +40,18 @@ public final class BossEncountersPlugin extends JavaPlugin {
     @Override
     public void onEnable() {
         saveDefaultConfig();
+        reloadConfig();
 
         bossKey = new NamespacedKey(this, "is_boss");
         bossApplier = new BossApplier(this);
+
+        // -------------------------
+        // Raffle init (NEW)
+        // -------------------------
+        RaffleKeys.init(this);
+        rafflePool = new RafflePool(this);
+        rafflePool.reloadFromConfig();
+        raffleService = new RaffleService(rafflePool);
 
         // Register listeners (store spawn listener reference)
         spawnBossListener = new SpawnBossListener(this);
@@ -86,6 +102,22 @@ public final class BossEncountersPlugin extends JavaPlugin {
 
     public BossApplier bossApplier() {
         return bossApplier;
+    }
+
+    // -------------------------
+    // Raffle getters (NEW)
+    // -------------------------
+
+    public RafflePool rafflePool() {
+        return rafflePool;
+    }
+
+    public RaffleService raffleService() {
+        return raffleService;
+    }
+
+    public int raffleMaxSlotsPerArmor() {
+        return getConfig().getInt("raffle.max_slots_per_armor", RaffleService.DEFAULT_MAX_SLOTS);
     }
 
     /* -------------------------
