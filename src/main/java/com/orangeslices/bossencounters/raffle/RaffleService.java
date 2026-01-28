@@ -93,7 +93,6 @@ public final class RaffleService {
         writeEffects(pdc, effects);
         pdc.set(RaffleKeys.SLOT_COUNT, PersistentDataType.INTEGER, slotsUsed);
 
-        meta.setPersistentDataContainer(pdc);
         armor.setItemMeta(meta);
 
         return ApplyResult.success(rolled, newLevel, slotsUsed, maxSlots);
