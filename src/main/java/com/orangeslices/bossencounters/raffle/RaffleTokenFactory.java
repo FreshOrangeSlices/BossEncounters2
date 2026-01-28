@@ -2,6 +2,7 @@ package com.orangeslices.bossencounters.raffle;
 
 import org.bukkit.ChatColor;
 import org.bukkit.Material;
+import org.bukkit.NamespacedKey;
 import org.bukkit.inventory.ItemFlag;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
@@ -14,13 +15,17 @@ import java.util.UUID;
 
 public final class RaffleTokenFactory {
 
+    private static NamespacedKey TOKEN_FLAG;
+    private static NamespacedKey TOKEN_UUID;
+
     private RaffleTokenFactory() {}
 
-    /**
-     * Creates a single-use, non-stackable raffle token.
-     * Non-stackable is enforced by a unique UUID stored in PDC.
-     */
-    public static ItemStack createToken(Plugin plugin) {
+    public static void init(Plugin plugin) {
+        TOKEN_FLAG = new NamespacedKey(plugin, "raffle_token");
+        TOKEN_UUID = new NamespacedKey(plugin, "raffle_token_uuid");
+    }
+
+    public static ItemStack createToken() {
         ItemStack item = new ItemStack(Material.PAPER, 1);
         ItemMeta meta = item.getItemMeta();
         if (meta == null) return item;
@@ -37,37 +42,21 @@ public final class RaffleTokenFactory {
         meta.addItemFlags(ItemFlag.HIDE_ATTRIBUTES);
 
         // Mark as raffle token + make it non-stackable
-        // We'll reuse RaffleKeys.EFFECTS key space? No — keep it separate:
-        // We'll store two small tags using NamespacedKey created in plugin.
-        meta.getPersistentDataContainer().set(
-                plugin.getNamespacedKey("raffle_token"),
-                PersistentDataType.BYTE,
-                (byte) 1
-        );
-        meta.getPersistentDataContainer().set(
-                plugin.getNamespacedKey("raffle_token_uuid"),
-                PersistentDataType.STRING,
-                UUID.randomUUID().toString()
-        );
+        meta.getPersistentDataContainer().set(TOKEN_FLAG, PersistentDataType.BYTE, (byte) 1);
+        meta.getPersistentDataContainer().set(TOKEN_UUID, PersistentDataType.STRING, UUID.randomUUID().toString());
 
         item.setItemMeta(meta);
         return item;
     }
 
-    /**
-     * Check if an ItemStack is a raffle token.
-     */
-    public static boolean isToken(Plugin plugin, ItemStack item) {
+    public static boolean isToken(ItemStack item) {
         if (item == null || item.getType() == Material.AIR) return false;
         if (!item.hasItemMeta()) return false;
 
         ItemMeta meta = item.getItemMeta();
         if (meta == null) return false;
 
-        Byte flag = meta.getPersistentDataContainer().get(
-                plugin.getNamespacedKey("raffle_token"),
-                PersistentDataType.BYTE
-        );
+        Byte flag = meta.getPersistentDataContainer().get(TOKEN_FLAG, PersistentDataType.BYTE);
         return flag != null && flag == (byte) 1;
     }
 }
