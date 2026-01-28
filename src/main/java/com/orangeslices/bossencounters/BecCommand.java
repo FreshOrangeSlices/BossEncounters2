@@ -1,5 +1,7 @@
 package com.orangeslices.bossencounters;
 
+import com.orangeslices.bossencounters.raffle.RaffleTokenFactory;
+import org.bukkit.inventory.ItemStack;
 import org.bukkit.ChatColor;
 import org.bukkit.NamespacedKey;
 import org.bukkit.World;
