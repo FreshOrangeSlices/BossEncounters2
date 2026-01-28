@@ -1,7 +1,6 @@
 package com.orangeslices.bossencounters;
 
 import com.orangeslices.bossencounters.raffle.RaffleTokenFactory;
-import org.bukkit.inventory.ItemStack;
 import org.bukkit.ChatColor;
 import org.bukkit.NamespacedKey;
 import org.bukkit.World;
@@ -11,6 +10,7 @@ import org.bukkit.command.CommandSender;
 import org.bukkit.entity.EntityType;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
+import org.bukkit.inventory.ItemStack;
 import org.bukkit.persistence.PersistentDataType;
 
 import java.util.Locale;
@@ -45,6 +45,33 @@ public final class BecCommand implements CommandExecutor {
             return true;
         }
 
+        // ---------------------------------
+        // /bec raffle [amount]  (OP only)
+        // ---------------------------------
+        if (args[0].equalsIgnoreCase("raffle")) {
+            if (!player.isOp()) {
+                player.sendMessage(ChatColor.RED + "You do not have permission to use this command.");
+                return true;
+            }
+
+            int amount = 1;
+            if (args.length >= 2) {
+                try {
+                    amount = Math.max(1, Integer.parseInt(args[1]));
+                } catch (NumberFormatException ignored) {
+                }
+            }
+
+            ItemStack token = RaffleTokenFactory.createToken();
+            for (int i = 0; i < amount; i++) {
+                player.getInventory().addItem(token.clone());
+            }
+
+            player.sendMessage(ChatColor.LIGHT_PURPLE + "Given " + amount + " raffle token(s).");
+            return true;
+        }
+
+        // Existing command:
         if (args[0].equalsIgnoreCase("test")) {
             handleTest(player, args);
             return true;
@@ -108,6 +135,8 @@ public final class BecCommand implements CommandExecutor {
         player.sendMessage(ChatColor.GOLD + "BossEncounters Commands:");
         player.sendMessage(ChatColor.YELLOW + "/bec test <RANK> <MOB> [affixes]");
         player.sendMessage(ChatColor.GRAY + "Example: /bec test GOLD ZOMBIE lifesteal,mark,thorns");
+        player.sendMessage(ChatColor.LIGHT_PURPLE + "/bec raffle [amount]");
+        player.sendMessage(ChatColor.GRAY + "Gives raffle tokens (OP only).");
         player.sendMessage(ChatColor.GRAY + "Ranks: GRAY, GREEN, RED, PURPLE, GOLD");
     }
 }
