@@ -58,6 +58,7 @@ public final class BossEncountersPlugin extends JavaPlugin {
         // Register listeners (store spawn listener reference)
         spawnBossListener = new SpawnBossListener(this);
 
+        getServer().getPluginManager().registerEvents(new com.orangeslices.bossencounters.raffle.RaffleApplyListener(this), this);
         getServer().getPluginManager().registerEvents(spawnBossListener, this);
         getServer().getPluginManager().registerEvents(new BossCombatListener(this), this);
         getServer().getPluginManager().registerEvents(new AffixListener(this), this);
