@@ -49,6 +49,7 @@ public final class BossEncountersPlugin extends JavaPlugin {
         // Raffle init (NEW)
         // -------------------------
         RaffleKeys.init(this);
+        RaffleTokenFactory.init(this);
         rafflePool = new RafflePool(this);
         rafflePool.reloadFromConfig();
         raffleService = new RaffleService(rafflePool);
