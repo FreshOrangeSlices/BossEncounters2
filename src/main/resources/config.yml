@@ -117,6 +117,15 @@ affixes:
     RED: 1.25
     PURPLE: 1.45
     GOLD: 1.70
+   
+raffle:
+    max_slots_per_armor: 3
+    effects:
+    - VITALITY
+    - EMBER_WARD
+    - DREAD
+    - MISSTEP
+
 
   pool:
     lifesteal: { weight: 5, chance: 0.25, cooldown_ms: 1200, heal_percent_of_damage: 0.20 }
