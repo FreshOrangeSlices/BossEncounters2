@@ -6,7 +6,11 @@ import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.persistence.PersistentDataContainer;
 import org.bukkit.persistence.PersistentDataType;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Random;
 
 /**
  * Core rules engine:
@@ -22,6 +26,8 @@ import java.util.*;
 public final class RaffleService {
 
     public static final int DEFAULT_MAX_SLOTS = 3;
+
+    private static final Random RNG = new Random();
 
     private final RafflePool pool;
 
@@ -39,6 +45,9 @@ public final class RaffleService {
         if (RaffleKeys.EFFECTS == null || RaffleKeys.SLOT_COUNT == null) {
             return ApplyResult.fail("RaffleKeys not initialized (call RaffleKeys.init(plugin) on startup).");
         }
+
+        // Clamp just in case caller passes weird values
+        if (maxSlots <= 0) maxSlots = DEFAULT_MAX_SLOTS;
 
         ItemMeta meta = armor.getItemMeta();
         if (meta == null) {
@@ -110,7 +119,7 @@ public final class RaffleService {
         }
         if (goods.isEmpty()) return null;
 
-        int idx = new Random().nextInt(goods.size());
+        int idx = RNG.nextInt(goods.size());
         return goods.get(idx);
     }
 
