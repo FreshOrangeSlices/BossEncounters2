@@ -2,7 +2,7 @@
 # Boss Spawn Settings
 # ===============================
 spawn:
-  one_in: 60
+  one_in: 250
 
 mobs:
   whitelist:
@@ -231,8 +231,41 @@ affixes:
 # Raffle Add-On System (NEW)
 # ===============================
 raffle:
+  # Debug logs in console (RaffleDebug)
   debug: false
+
+  # How many add-on slots an armor piece can hold
   max_slots_per_armor: 3
+
+  # Anti-double-fire / anti-macro spam (technical guardrail)
+  # 0 = disabled (not recommended)
+  cooldown_ms: 250
+
+  # Interaction rules (keeps UX consistent)
+  require_token_mainhand: true
+  require_armor_offhand: true
+
+  # Player feedback (color codes supported)
+  message:
+    success: "&dSomething shifts within the armor..."
+    fail_no_armor: "&cHold armor in your offhand."
+    fail_not_armor: "&cThat item isn't armor."
+    fail_generic: "&c{reason}"
+
+  # Sounds (set enabled false to disable)
+  sound:
+    success:
+      enabled: true
+      key: "BLOCK_ENCHANTMENT_TABLE_USE"
+      volume: 0.8
+      pitch: 1.2
+    fail:
+      enabled: true
+      key: "BLOCK_NOTE_BLOCK_BASS"
+      volume: 0.7
+      pitch: 0.9
+
+  # Unified pool (equal chance)
   effects:
     - VITALITY
     - EMBER_WARD
