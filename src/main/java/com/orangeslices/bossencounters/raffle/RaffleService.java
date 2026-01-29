@@ -6,27 +6,21 @@ import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.persistence.PersistentDataContainer;
 import org.bukkit.persistence.PersistentDataType;
 
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Random;
+import java.util.*;
 
 /**
- * Core rules engine:
- * - armor only
- * - max 3 slots
- * - unified pool, equal chance
- * - max 1 curse per armor; after curse -> GOOD only
- * - GOOD duplicates level up (+1) and still consume a slot
- * - CURSES never level
- *
- * This class only stores results. It does not trigger effects (equip system comes later).
+ * Raffle rules:
+ * - Armor only
+ * - Max 3 slots
+ * - Unified equal pool
+ * - Max 1 curse per item
+ * - After curse → GOOD-only rolls
+ * - GOOD duplicates level up
+ * - Curses never level
  */
 public final class RaffleService {
 
     public static final int DEFAULT_MAX_SLOTS = 3;
-
     private static final Random RNG = new Random();
 
     private final RafflePool pool;
@@ -37,16 +31,15 @@ public final class RaffleService {
 
     public ApplyResult applyToArmor(ItemStack armor, int maxSlots) {
         if (armor == null || armor.getType() == Material.AIR) {
-            return ApplyResult.fail("No armor item found.");
+            return ApplyResult.fail("No armor item.");
         }
         if (!isArmor(armor.getType())) {
-            return ApplyResult.fail("That item is not armor.");
+            return ApplyResult.fail("Item is not armor.");
         }
         if (RaffleKeys.EFFECTS == null || RaffleKeys.SLOT_COUNT == null) {
-            return ApplyResult.fail("RaffleKeys not initialized (call RaffleKeys.init(plugin) on startup).");
+            return ApplyResult.fail("RaffleKeys not initialized.");
         }
 
-        // Clamp just in case caller passes weird values
         if (maxSlots <= 0) maxSlots = DEFAULT_MAX_SLOTS;
 
         ItemMeta meta = armor.getItemMeta();
@@ -56,49 +49,36 @@ public final class RaffleService {
 
         PersistentDataContainer pdc = meta.getPersistentDataContainer();
 
-        // Read stored effects
         Map<RaffleEffectId, Integer> effects = readEffects(pdc);
         int slotsUsed = readSlotsUsed(pdc, effects.size());
 
         if (slotsUsed >= maxSlots) {
-            return ApplyResult.fail("This armor already has the max add-ons (" + maxSlots + ").");
+            return ApplyResult.fail("Max add-ons reached.");
         }
 
-        // Determine curse-lock status
-        boolean hasCurse = hasAnyCurse(effects);
+        boolean hasCurse = hasCurse(effects);
 
-        // Ensure pool is loaded
         if (pool.isEmpty()) {
-            return ApplyResult.fail("Raffle pool is empty. Check config.yml -> raffle.effects");
+            return ApplyResult.fail("Raffle pool is empty.");
         }
 
-        // Roll
-        RaffleEffectId rolled = rollWithCurseLock(hasCurse);
+        RaffleEffectId rolled = roll(hasCurse);
         if (rolled == null) {
-            return ApplyResult.fail("No valid effects available to roll (check your raffle.effects list).");
+            return ApplyResult.fail("No valid effects to roll.");
         }
 
-        // Apply rules
         int newLevel = 1;
 
         if (rolled.isCurse()) {
-            if (hasCurse) {
-                // Should never happen because of curse-lock roll filtering, but guard anyway
-                return ApplyResult.fail("Armor is curse-locked (no more curses).");
-            }
-            // Curses never level; always level 1
             effects.put(rolled, 1);
         } else {
-            // GOOD: duplicates level up (+1)
             int current = effects.getOrDefault(rolled, 0);
-            newLevel = Math.max(1, current + 1);
+            newLevel = current + 1;
             effects.put(rolled, newLevel);
         }
 
-        // Consumes exactly 1 slot per apply, regardless of duplicate/level-up
-        slotsUsed += 1;
+        slotsUsed++;
 
-        // Write back
         writeEffects(pdc, effects);
         pdc.set(RaffleKeys.SLOT_COUNT, PersistentDataType.INTEGER, slotsUsed);
 
@@ -107,25 +87,23 @@ public final class RaffleService {
         return ApplyResult.success(rolled, newLevel, slotsUsed, maxSlots);
     }
 
-    private RaffleEffectId rollWithCurseLock(boolean hasCurse) {
+    private RaffleEffectId roll(boolean hasCurse) {
         if (!hasCurse) {
             return pool.roll();
         }
 
-        // curse-locked: roll from GOOD-only subset of configured pool
         List<RaffleEffectId> goods = new ArrayList<>();
         for (RaffleEffectId id : pool.snapshot()) {
-            if (id != null && id.isGood()) goods.add(id);
+            if (id.isGood()) goods.add(id);
         }
-        if (goods.isEmpty()) return null;
 
-        int idx = RNG.nextInt(goods.size());
-        return goods.get(idx);
+        if (goods.isEmpty()) return null;
+        return goods.get(RNG.nextInt(goods.size()));
     }
 
-    private static boolean hasAnyCurse(Map<RaffleEffectId, Integer> effects) {
+    private static boolean hasCurse(Map<RaffleEffectId, Integer> effects) {
         for (RaffleEffectId id : effects.keySet()) {
-            if (id != null && id.isCurse()) return true;
+            if (id.isCurse()) return true;
         }
         return false;
     }
@@ -135,20 +113,14 @@ public final class RaffleService {
         return stored != null ? stored : fallback;
     }
 
-    /**
-     * Stored format: "ID:level,ID:level"
-     */
     private static Map<RaffleEffectId, Integer> readEffects(PersistentDataContainer pdc) {
         String raw = pdc.get(RaffleKeys.EFFECTS, PersistentDataType.STRING);
         Map<RaffleEffectId, Integer> out = new LinkedHashMap<>();
-        if (raw == null || raw.trim().isEmpty()) return out;
 
-        String[] parts = raw.split(",");
-        for (String part : parts) {
-            String token = part.trim();
-            if (token.isEmpty()) continue;
+        if (raw == null || raw.isBlank()) return out;
 
-            String[] kv = token.split(":");
+        for (String part : raw.split(",")) {
+            String[] kv = part.split(":");
             if (kv.length != 2) continue;
 
             RaffleEffectId id = RaffleEffectId.fromString(kv[0]);
@@ -156,12 +128,11 @@ public final class RaffleService {
 
             int lvl;
             try {
-                lvl = Integer.parseInt(kv[1].trim());
+                lvl = Integer.parseInt(kv[1]);
             } catch (NumberFormatException e) {
                 lvl = 1;
             }
 
-            // Curses never level; clamp
             if (id.isCurse()) lvl = 1;
             if (lvl < 1) lvl = 1;
 
@@ -171,7 +142,7 @@ public final class RaffleService {
     }
 
     private static void writeEffects(PersistentDataContainer pdc, Map<RaffleEffectId, Integer> effects) {
-        if (effects == null || effects.isEmpty()) {
+        if (effects.isEmpty()) {
             pdc.remove(RaffleKeys.EFFECTS);
             return;
         }
@@ -179,55 +150,42 @@ public final class RaffleService {
         StringBuilder sb = new StringBuilder();
         boolean first = true;
 
-        for (Map.Entry<RaffleEffectId, Integer> e : effects.entrySet()) {
-            if (e.getKey() == null) continue;
-
-            int lvl = (e.getValue() == null ? 1 : e.getValue());
-            if (e.getKey().isCurse()) lvl = 1;
-            if (lvl < 1) lvl = 1;
-
+        for (var e : effects.entrySet()) {
             if (!first) sb.append(",");
-            sb.append(e.getKey().name()).append(":").append(lvl);
+            sb.append(e.getKey().name()).append(":").append(e.getValue());
             first = false;
         }
 
         pdc.set(RaffleKeys.EFFECTS, PersistentDataType.STRING, sb.toString());
     }
 
-    private static boolean isArmor(Material mat) {
-        if (mat == null) return false;
-        String name = mat.name();
-        return name.endsWith("_HELMET")
-                || name.endsWith("_CHESTPLATE")
-                || name.endsWith("_LEGGINGS")
-                || name.endsWith("_BOOTS");
+    private static boolean isArmor(Material m) {
+        String n = m.name();
+        return n.endsWith("_HELMET")
+                || n.endsWith("_CHESTPLATE")
+                || n.endsWith("_LEGGINGS")
+                || n.endsWith("_BOOTS");
     }
 
-    // ---------------- Result object ----------------
+    // ---------------- result ----------------
 
     public static final class ApplyResult {
         public final boolean success;
         public final String message;
+        public final RaffleEffectId effect;
+        public final int level, slotsUsed, maxSlots;
 
-        public final RaffleEffectId effectId;
-        public final int level;
-        public final int slotsUsed;
-        public final int maxSlots;
-
-        private ApplyResult(boolean success, String message,
-                            RaffleEffectId effectId, int level,
-                            int slotsUsed, int maxSlots) {
-            this.success = success;
-            this.message = message;
-            this.effectId = effectId;
-            this.level = level;
-            this.slotsUsed = slotsUsed;
-            this.maxSlots = maxSlots;
+        private ApplyResult(boolean s, String m, RaffleEffectId e, int l, int u, int max) {
+            success = s;
+            message = m;
+            effect = e;
+            level = l;
+            slotsUsed = u;
+            maxSlots = max;
         }
 
-        public static ApplyResult success(RaffleEffectId id, int level, int slotsUsed, int maxSlots) {
-            return new ApplyResult(true, "Applied: " + id.name() + " (Lvl " + level + ")",
-                    id, level, slotsUsed, maxSlots);
+        public static ApplyResult success(RaffleEffectId id, int lvl, int used, int max) {
+            return new ApplyResult(true, "Applied " + id.name(), id, lvl, used, max);
         }
 
         public static ApplyResult fail(String msg) {
