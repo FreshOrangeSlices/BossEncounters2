@@ -14,12 +14,13 @@ import java.util.Map;
 /**
  * Raffle potion-style effects refresher.
  *
- * Modeled after PotionAddOnListener (stable approach): refresh every N ticks and apply
- * potion effects using applyIfBetter (no particles, icon shown).
+ * This mirrors PotionAddOnListener logic:
+ * - periodic refresh
+ * - applyIfBetter()
+ * - highest level across armor
  *
- * IMPORTANT:
- * - This only handles "simple potion effects" (the fast baseline).
- * - Custom effects will live in the same raffle/effects directory later.
+ * BUT:
+ * - effect mappings live in RafflePotionTable (expandable, no rerouting)
  */
 public final class RafflePotionEngine {
 
@@ -33,7 +34,6 @@ public final class RafflePotionEngine {
     public void start() {
         stop();
 
-        // Same rhythm as your stable add-on loop: start after 1s, refresh every 2s
         task = plugin.getServer().getScheduler().runTaskTimer(
                 plugin,
                 () -> plugin.getServer().getOnlinePlayers().forEach(this::refreshPlayer),
@@ -50,32 +50,31 @@ public final class RafflePotionEngine {
     private void refreshPlayer(Player player) {
         if (player == null) return;
 
-        // Collect highest-level raffle effects across armor (helmet/chest/legs/boots)
+        // 1) Collect highest raffle levels across armor
         Map<RaffleEffectId, Integer> highest = new HashMap<>();
-
         mergeArmor(highest, player.getInventory().getHelmet());
         mergeArmor(highest, player.getInventory().getChestplate());
         mergeArmor(highest, player.getInventory().getLeggings());
         mergeArmor(highest, player.getInventory().getBoots());
 
-        // Apply "simple potion effects" mapping here.
-        // Keep this list small for now; we expand later via a table class (RafflePotionTable).
-        //
-        // Your current raffle pool: VITALITY, EMBER_WARD, DREAD, MISSTEP
-        //
-        // Suggested baseline mappings (safe + easy):
-        // - VITALITY -> HEALTH_BOOST (lvl -> amp)
-        // - EMBER_WARD -> FIRE_RESISTANCE (always amp 0)
-        //
-        // Curses (DREAD, MISSTEP) we intentionally do NOT apply as potion effects here
-        // yet, since they may become custom mechanics.
+        // 2) Apply potion-style raffle effects from table
+        for (RafflePotionTable.Entry entry : RafflePotionTable.entries()) {
+            if (entry == null) continue;
 
-        int vitality = highest.getOrDefault(RaffleEffectId.VITALITY, 0);
-        int emberWard = highest.getOrDefault(RaffleEffectId.EMBER_WARD, 0);
+            int level = highest.getOrDefault(entry.id, 0);
+            if (level <= 0) continue;
 
-        // Durations: mirror your stable add-on approach
-        applyIfBetter(player, PotionEffectType.HEALTH_BOOST, vitality, 120);
-        applyIfBetter(player, PotionEffectType.FIRE_RESISTANCE, emberWard, 120);
+            // Helmet-only rule
+            if (entry.slotRule == RafflePotionTable.SlotRule.HELMET_ONLY) {
+                ItemStack helmet = player.getInventory().getHelmet();
+                Map<RaffleEffectId, Integer> helmetMap =
+                        RaffleEffectReader.readFromItem(helmet);
+                level = helmetMap.getOrDefault(entry.id, 0);
+                if (level <= 0) continue;
+            }
+
+            applyIfBetter(player, entry.potion, level, entry.durationTicks);
+        }
     }
 
     private void mergeArmor(Map<RaffleEffectId, Integer> into, ItemStack armor) {
@@ -87,16 +86,18 @@ public final class RafflePotionEngine {
     private void applyIfBetter(Player player, PotionEffectType type, int level, int duration) {
         if (type == null || level <= 0) return;
 
-        // Level 1 -> amplifier 0, level 2 -> amplifier 1, etc.
         int amplifier = Math.max(0, level - 1);
-
         PotionEffect current = player.getPotionEffect(type);
+
         if (current != null) {
             if (current.getAmplifier() > amplifier) return;
             if (current.getAmplifier() == amplifier && current.getDuration() > duration) return;
         }
 
-        // ambient=true (less spammy), particles=false, icon=true
-        player.addPotionEffect(new PotionEffect(type, duration, amplifier, true, false, true));
+        // Same flags as your stable system:
+        // ambient=true, particles=false, icon=true
+        player.addPotionEffect(
+                new PotionEffect(type, duration, amplifier, true, false, true)
+        );
     }
 }
