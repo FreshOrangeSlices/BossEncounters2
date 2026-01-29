@@ -32,10 +32,18 @@ public final class RaffleTokenFactory {
         TOKEN_UUID = new NamespacedKey(plugin, "raffle_token_uuid");
     }
 
+    private static void validateInit() {
+        if (TOKEN_FLAG == null || TOKEN_UUID == null) {
+            throw new IllegalStateException("RaffleTokenFactory not initialized. Call RaffleTokenFactory.init(plugin) in onEnable().");
+        }
+    }
+
     /**
      * Create a new raffle token item.
      */
     public static ItemStack createToken() {
+        validateInit();
+
         ItemStack item = new ItemStack(Material.PAPER, 1);
         ItemMeta meta = item.getItemMeta();
         if (meta == null) return item;
@@ -75,6 +83,8 @@ public final class RaffleTokenFactory {
     public static boolean isToken(ItemStack item) {
         if (item == null || item.getType() == Material.AIR) return false;
         if (!item.hasItemMeta()) return false;
+
+        validateInit();
 
         ItemMeta meta = item.getItemMeta();
         if (meta == null) return false;
