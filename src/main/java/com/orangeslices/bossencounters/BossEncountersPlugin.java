@@ -6,6 +6,7 @@ import com.orangeslices.bossencounters.raffle.RafflePool;
 import com.orangeslices.bossencounters.raffle.RaffleService;
 import com.orangeslices.bossencounters.raffle.RaffleTokenFactory;
 import com.orangeslices.bossencounters.raffle.effects.RafflePotionEngine;
+import com.orangeslices.bossencounters.raffle.effects.custom.RaffleCustomEffectEngine;
 import org.bukkit.ChatColor;
 import org.bukkit.Location;
 import org.bukkit.NamespacedKey;
@@ -24,23 +25,21 @@ public final class BossEncountersPlugin extends JavaPlugin {
     private NamespacedKey bossKey;
     private BossApplier bossApplier;
 
-    // Raffle system core (new)
+    // Raffle system core
     private RafflePool rafflePool;
     private RaffleService raffleService;
 
-    // Raffle potion engine (new)
+    // Raffle effect engines
     private RafflePotionEngine rafflePotionEngine;
+    private RaffleCustomEffectEngine raffleCustomEffectEngine;
 
-    // Track active bosses per world (UUID key = world UUID)
+    // Track active bosses per world
     private final Map<UUID, Integer> activeBossesByWorld = new ConcurrentHashMap<>();
 
     // Track despawn tasks per boss entity
     private final Map<UUID, BukkitTask> despawnTasks = new ConcurrentHashMap<>();
 
-    // Keep a reference to spawn listener so BecCommand can call onBossCreated/onBossRemoved
     private SpawnBossListener spawnBossListener;
-
-    // Keep reference so we can stop the scheduled task cleanly
     private PotionAddOnListener potionAddOnListener;
 
     @Override
@@ -52,12 +51,11 @@ public final class BossEncountersPlugin extends JavaPlugin {
         bossApplier = new BossApplier(this);
 
         // -------------------------
-        // Raffle init (NEW)
+        // Raffle init
         // -------------------------
         RaffleKeys.init(this);
         RaffleTokenFactory.init(this);
 
-        // Debug toggle wiring (C3)
         RaffleDebug.init(this);
         RaffleDebug.setEnabled(getConfig().getBoolean("raffle.debug", false));
 
@@ -65,14 +63,22 @@ public final class BossEncountersPlugin extends JavaPlugin {
         rafflePool.reloadFromConfig();
         raffleService = new RaffleService(rafflePool);
 
-        // Start raffle potion engine (D3)
+        // -------------------------
+        // Raffle effect engines
+        // -------------------------
         rafflePotionEngine = new RafflePotionEngine(this);
         rafflePotionEngine.start();
 
-        // Register listeners (store spawn listener reference)
+        raffleCustomEffectEngine = new RaffleCustomEffectEngine(this);
+        raffleCustomEffectEngine.start();
+
+        // -------------------------
+        // Listeners
+        // -------------------------
         spawnBossListener = new SpawnBossListener(this);
 
-        getServer().getPluginManager().registerEvents(new com.orangeslices.bossencounters.raffle.RaffleApplyListener(this), this);
+        getServer().getPluginManager().registerEvents(
+                new com.orangeslices.bossencounters.raffle.RaffleApplyListener(this), this);
         getServer().getPluginManager().registerEvents(spawnBossListener, this);
         getServer().getPluginManager().registerEvents(new BossCombatListener(this), this);
         getServer().getPluginManager().registerEvents(new AffixListener(this), this);
@@ -80,12 +86,12 @@ public final class BossEncountersPlugin extends JavaPlugin {
         getServer().getPluginManager().registerEvents(new AddOnListener(this), this);
         getServer().getPluginManager().registerEvents(new AddOnEffectListener(this), this);
 
-        // Potion AddOn path (refresh loop)
+        // Existing potion add-on system
         potionAddOnListener = new PotionAddOnListener(this);
         getServer().getPluginManager().registerEvents(potionAddOnListener, this);
         potionAddOnListener.start();
 
-        // Register command
+        // Command
         if (getCommand("bec") != null) {
             getCommand("bec").setExecutor(new BecCommand(this, bossApplier));
         }
@@ -95,45 +101,34 @@ public final class BossEncountersPlugin extends JavaPlugin {
 
     @Override
     public void onDisable() {
-        // Stop raffle potion engine (D3)
+
+        if (raffleCustomEffectEngine != null) {
+            raffleCustomEffectEngine.stop();
+            raffleCustomEffectEngine = null;
+        }
+
         if (rafflePotionEngine != null) {
             rafflePotionEngine.stop();
             rafflePotionEngine = null;
         }
 
-        // Stop potion refresh task cleanly
         if (potionAddOnListener != null) {
             potionAddOnListener.stop();
             potionAddOnListener = null;
         }
 
-        // Cancel any scheduled boss despawns
         for (UUID id : despawnTasks.keySet()) {
             cancelBossDespawn(id);
         }
         despawnTasks.clear();
-
-        // Reset counts (not required, but keeps state clean)
         activeBossesByWorld.clear();
 
         getLogger().info("BossEncounters disabled.");
     }
 
-    public NamespacedKey bossKey() {
-        return bossKey;
-    }
-
-    public BossApplier bossApplier() {
-        return bossApplier;
-    }
-
     // -------------------------
-    // Raffle getters (NEW)
+    // Raffle accessors
     // -------------------------
-
-    public RafflePool rafflePool() {
-        return rafflePool;
-    }
 
     public RaffleService raffleService() {
         return raffleService;
@@ -144,7 +139,7 @@ public final class BossEncountersPlugin extends JavaPlugin {
     }
 
     /* -------------------------
-       Local broadcast (radius) with mode
+       Broadcast helpers
        ------------------------- */
 
     public void broadcastLocal(Location at, double radius, String msgColored) {
@@ -157,7 +152,6 @@ public final class BossEncountersPlugin extends JavaPlugin {
         if (mode == null) mode = "CHAT";
         mode = mode.trim().toUpperCase();
 
-        // Ensure colors are translated once
         String colored = ChatColor.translateAlternateColorCodes('&', msgColored);
 
         for (Player p : w.getPlayers()) {
@@ -165,11 +159,7 @@ public final class BossEncountersPlugin extends JavaPlugin {
 
             switch (mode) {
                 case "ACTIONBAR" -> sendActionBar(p, colored);
-                case "TITLE" -> {
-                    // Optional: first line only (you can expand later)
-                    p.sendTitle(colored, "", 5, 40, 10);
-                }
-                case "CHAT" -> p.sendMessage(colored);
+                case "TITLE" -> p.sendTitle(colored, "", 5, 40, 10);
                 default -> p.sendMessage(colored);
             }
         }
@@ -177,51 +167,25 @@ public final class BossEncountersPlugin extends JavaPlugin {
 
     private void sendActionBar(Player player, String coloredMessage) {
         try {
-            // Spigot/Paper compatible action bar (bungee component)
             player.spigot().sendMessage(
                     net.md_5.bungee.api.ChatMessageType.ACTION_BAR,
                     net.md_5.bungee.api.chat.TextComponent.fromLegacyText(coloredMessage)
             );
         } catch (Throwable t) {
-            // Fallback if server jar is weird
             player.sendMessage(coloredMessage);
         }
     }
 
     /* -------------------------
-       Boss cap + tracking (for BecCommand + sanity)
-       ------------------------- */
-
-    public boolean canCreateBossIn(World world) {
-        if (world == null) return false;
-
-        int cap = getMaxBossesPerWorld();
-        if (cap <= 0) return true; // 0 = unlimited
-
-        return getActiveBossCount(world) < cap;
-    }
-
-    public int getMaxBossesPerWorld() {
-        return getConfig().getInt("boss.cap.max_per_world", 0);
-    }
-
-    public int getActiveBossCount(World world) {
-        if (world == null) return 0;
-        return activeBossesByWorld.getOrDefault(world.getUID(), 0);
-    }
-
-    /* -------------------------
-       Boss lifecycle hooks (called by SpawnBossListener + BecCommand)
+       Boss lifecycle helpers
        ------------------------- */
 
     public void onBossCreated(LivingEntity boss) {
         if (boss == null || boss.getWorld() == null) return;
 
-        // increment active boss count
         UUID w = boss.getWorld().getUID();
         activeBossesByWorld.merge(w, 1, Integer::sum);
 
-        // forward to listener to apply messages/despawn scheduling
         if (spawnBossListener != null) {
             spawnBossListener.onBossCreated(boss);
         }
@@ -230,19 +194,10 @@ public final class BossEncountersPlugin extends JavaPlugin {
     public void onBossRemoved(LivingEntity boss) {
         if (boss == null || boss.getWorld() == null) return;
 
-        // decrement active boss count (never below 0)
         UUID w = boss.getWorld().getUID();
-        activeBossesByWorld.compute(w, (k, v) -> {
-            int cur = (v == null) ? 0 : v;
-            return Math.max(0, cur - 1);
-        });
-
+        activeBossesByWorld.compute(w, (k, v) -> Math.max(0, (v == null ? 0 : v) - 1));
         cancelBossDespawn(boss.getUniqueId());
     }
-
-    /* -------------------------
-       Despawn task management
-       ------------------------- */
 
     public void scheduleBossDespawn(UUID bossId, BukkitTask task) {
         cancelBossDespawn(bossId);
