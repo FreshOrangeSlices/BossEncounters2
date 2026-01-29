@@ -1,9 +1,10 @@
 package com.orangeslices.bossencounters;
 
-import com.orangeslices.bossencounters.raffle.RaffleTokenFactory;
+import com.orangeslices.bossencounters.raffle.RaffleDebug;
 import com.orangeslices.bossencounters.raffle.RaffleKeys;
 import com.orangeslices.bossencounters.raffle.RafflePool;
 import com.orangeslices.bossencounters.raffle.RaffleService;
+import com.orangeslices.bossencounters.raffle.RaffleTokenFactory;
 import org.bukkit.ChatColor;
 import org.bukkit.Location;
 import org.bukkit.NamespacedKey;
@@ -51,6 +52,15 @@ public final class BossEncountersPlugin extends JavaPlugin {
         // -------------------------
         RaffleKeys.init(this);
         RaffleTokenFactory.init(this);
+
+        // Debug toggle (A)
+        RaffleDebug.init(this);
+        boolean raffleDebug = getConfig().getBoolean("raffle.debug", false);
+        RaffleDebug.setEnabled(raffleDebug);
+        if (raffleDebug) {
+            getLogger().info("[RaffleDebug] Enabled via config.yml (raffle.debug: true)");
+        }
+
         rafflePool = new RafflePool(this);
         rafflePool.reloadFromConfig();
         raffleService = new RaffleService(rafflePool);
