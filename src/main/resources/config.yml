@@ -232,7 +232,7 @@ affixes:
 # ===============================
 raffle:
   # Debug logs in console (RaffleDebug)
-  debug: false
+  debug: true
 
   # How many add-on slots an armor piece can hold
   max_slots_per_armor: 3
