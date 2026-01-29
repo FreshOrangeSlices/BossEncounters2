@@ -1,10 +1,11 @@
 package com.orangeslices.bossencounters;
 
 import com.orangeslices.bossencounters.raffle.RaffleDebug;
-import com.orangeslices.bossencounters.raffle.RaffleTokenFactory;
 import com.orangeslices.bossencounters.raffle.RaffleKeys;
 import com.orangeslices.bossencounters.raffle.RafflePool;
 import com.orangeslices.bossencounters.raffle.RaffleService;
+import com.orangeslices.bossencounters.raffle.RaffleTokenFactory;
+import com.orangeslices.bossencounters.raffle.effects.RafflePotionEngine;
 import org.bukkit.ChatColor;
 import org.bukkit.Location;
 import org.bukkit.NamespacedKey;
@@ -26,6 +27,9 @@ public final class BossEncountersPlugin extends JavaPlugin {
     // Raffle system core (new)
     private RafflePool rafflePool;
     private RaffleService raffleService;
+
+    // Raffle potion engine (new)
+    private RafflePotionEngine rafflePotionEngine;
 
     // Track active bosses per world (UUID key = world UUID)
     private final Map<UUID, Integer> activeBossesByWorld = new ConcurrentHashMap<>();
@@ -53,13 +57,17 @@ public final class BossEncountersPlugin extends JavaPlugin {
         RaffleKeys.init(this);
         RaffleTokenFactory.init(this);
 
-        // C3: Debug toggle wiring
+        // Debug toggle wiring (C3)
         RaffleDebug.init(this);
         RaffleDebug.setEnabled(getConfig().getBoolean("raffle.debug", false));
 
         rafflePool = new RafflePool(this);
         rafflePool.reloadFromConfig();
         raffleService = new RaffleService(rafflePool);
+
+        // Start raffle potion engine (D3)
+        rafflePotionEngine = new RafflePotionEngine(this);
+        rafflePotionEngine.start();
 
         // Register listeners (store spawn listener reference)
         spawnBossListener = new SpawnBossListener(this);
@@ -87,6 +95,12 @@ public final class BossEncountersPlugin extends JavaPlugin {
 
     @Override
     public void onDisable() {
+        // Stop raffle potion engine (D3)
+        if (rafflePotionEngine != null) {
+            rafflePotionEngine.stop();
+            rafflePotionEngine = null;
+        }
+
         // Stop potion refresh task cleanly
         if (potionAddOnListener != null) {
             potionAddOnListener.stop();
