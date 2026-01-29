@@ -2,7 +2,7 @@
 # Boss Spawn Settings
 # ===============================
 spawn:
-  one_in: 250
+  one_in: 60
 
 mobs:
   whitelist:
@@ -231,6 +231,7 @@ affixes:
 # Raffle Add-On System (NEW)
 # ===============================
 raffle:
+  debug: false
   max_slots_per_armor: 3
   effects:
     - VITALITY
