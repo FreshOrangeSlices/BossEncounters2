@@ -36,9 +36,9 @@ public final class RaffleService {
         if (!isArmor(armor.getType())) {
             return ApplyResult.fail("Item is not armor.");
         }
-        if (RaffleKeys.EFFECTS == null || RaffleKeys.SLOT_COUNT == null) {
-            return ApplyResult.fail("RaffleKeys not initialized.");
-        }
+
+        // Defensive init check (will throw if not initialized)
+        RaffleKeys.validateInit();
 
         if (maxSlots <= 0) maxSlots = DEFAULT_MAX_SLOTS;
 
@@ -52,31 +52,48 @@ public final class RaffleService {
         Map<RaffleEffectId, Integer> effects = readEffects(pdc);
         int slotsUsed = readSlotsUsed(pdc, effects.size());
 
+        boolean hasCurse = hasCurse(effects);
+
+        RaffleDebug.log("---- Raffle Apply Start ----");
+        RaffleDebug.log("Item=" + armor.getType().name()
+                + " slotsUsed=" + slotsUsed + "/" + maxSlots
+                + " effects=" + effectsToDebugString(effects)
+                + " hasCurse=" + hasCurse);
+
         if (slotsUsed >= maxSlots) {
+            RaffleDebug.log("FAIL: max slots reached.");
             return ApplyResult.fail("Max add-ons reached.");
         }
 
-        boolean hasCurse = hasCurse(effects);
-
         if (pool.isEmpty()) {
+            RaffleDebug.log("FAIL: pool is empty (check config raffle.effects).");
             return ApplyResult.fail("Raffle pool is empty.");
         }
 
         RaffleEffectId rolled = roll(hasCurse);
         if (rolled == null) {
+            RaffleDebug.log("FAIL: no valid roll (likely curse-locked with no GOOD effects configured).");
             return ApplyResult.fail("No valid effects to roll.");
         }
 
         int newLevel = 1;
 
         if (rolled.isCurse()) {
+            // Should only happen if hasCurse == false, but keep it safe
+            if (hasCurse) {
+                RaffleDebug.log("FAIL: attempted to roll CURSE while curse-locked (guard).");
+                return ApplyResult.fail("Armor is curse-locked (no more curses).");
+            }
             effects.put(rolled, 1);
+            newLevel = 1;
         } else {
             int current = effects.getOrDefault(rolled, 0);
             newLevel = current + 1;
             effects.put(rolled, newLevel);
         }
 
+        // Consumes 1 slot every time
+        int beforeSlots = slotsUsed;
         slotsUsed++;
 
         writeEffects(pdc, effects);
@@ -84,26 +101,42 @@ public final class RaffleService {
 
         armor.setItemMeta(meta);
 
+        RaffleDebug.log("ROLLED: " + rolled.name()
+                + " type=" + (rolled.isCurse() ? "CURSE" : "GOOD")
+                + " resultLevel=" + newLevel
+                + " slots " + beforeSlots + "->" + slotsUsed
+                + " effectsNow=" + effectsToDebugString(effects));
+        RaffleDebug.log("---- Raffle Apply End ----");
+
         return ApplyResult.success(rolled, newLevel, slotsUsed, maxSlots);
     }
 
     private RaffleEffectId roll(boolean hasCurse) {
         if (!hasCurse) {
-            return pool.roll();
+            RaffleEffectId id = pool.roll();
+            RaffleDebug.log("ROLL MODE: full pool -> " + (id == null ? "null" : id.name()));
+            return id;
         }
 
+        // curse-locked: only GOOD
         List<RaffleEffectId> goods = new ArrayList<>();
         for (RaffleEffectId id : pool.snapshot()) {
-            if (id.isGood()) goods.add(id);
+            if (id != null && id.isGood()) goods.add(id);
         }
 
-        if (goods.isEmpty()) return null;
-        return goods.get(RNG.nextInt(goods.size()));
+        if (goods.isEmpty()) {
+            RaffleDebug.log("ROLL MODE: GOOD-only (curse-locked) but goods list is empty.");
+            return null;
+        }
+
+        RaffleEffectId pick = goods.get(RNG.nextInt(goods.size()));
+        RaffleDebug.log("ROLL MODE: GOOD-only (curse-locked) -> " + pick.name());
+        return pick;
     }
 
     private static boolean hasCurse(Map<RaffleEffectId, Integer> effects) {
         for (RaffleEffectId id : effects.keySet()) {
-            if (id.isCurse()) return true;
+            if (id != null && id.isCurse()) return true;
         }
         return false;
     }
@@ -113,6 +146,9 @@ public final class RaffleService {
         return stored != null ? stored : fallback;
     }
 
+    /**
+     * Stored format: "ID:level,ID:level"
+     */
     private static Map<RaffleEffectId, Integer> readEffects(PersistentDataContainer pdc) {
         String raw = pdc.get(RaffleKeys.EFFECTS, PersistentDataType.STRING);
         Map<RaffleEffectId, Integer> out = new LinkedHashMap<>();
@@ -120,15 +156,18 @@ public final class RaffleService {
         if (raw == null || raw.isBlank()) return out;
 
         for (String part : raw.split(",")) {
-            String[] kv = part.split(":");
+            String token = part.trim();
+            if (token.isEmpty()) continue;
+
+            String[] kv = token.split(":");
             if (kv.length != 2) continue;
 
-            RaffleEffectId id = RaffleEffectId.fromString(kv[0]);
+            RaffleEffectId id = RaffleEffectId.fromString(kv[0].trim());
             if (id == null) continue;
 
             int lvl;
             try {
-                lvl = Integer.parseInt(kv[1]);
+                lvl = Integer.parseInt(kv[1].trim());
             } catch (NumberFormatException e) {
                 lvl = 1;
             }
@@ -138,11 +177,12 @@ public final class RaffleService {
 
             out.put(id, lvl);
         }
+
         return out;
     }
 
     private static void writeEffects(PersistentDataContainer pdc, Map<RaffleEffectId, Integer> effects) {
-        if (effects.isEmpty()) {
+        if (effects == null || effects.isEmpty()) {
             pdc.remove(RaffleKeys.EFFECTS);
             return;
         }
@@ -150,9 +190,15 @@ public final class RaffleService {
         StringBuilder sb = new StringBuilder();
         boolean first = true;
 
-        for (var e : effects.entrySet()) {
+        for (Map.Entry<RaffleEffectId, Integer> e : effects.entrySet()) {
+            if (e.getKey() == null) continue;
+
+            int lvl = (e.getValue() == null ? 1 : e.getValue());
+            if (e.getKey().isCurse()) lvl = 1;
+            if (lvl < 1) lvl = 1;
+
             if (!first) sb.append(",");
-            sb.append(e.getKey().name()).append(":").append(e.getValue());
+            sb.append(e.getKey().name()).append(":").append(lvl);
             first = false;
         }
 
@@ -160,11 +206,25 @@ public final class RaffleService {
     }
 
     private static boolean isArmor(Material m) {
+        if (m == null) return false;
         String n = m.name();
         return n.endsWith("_HELMET")
                 || n.endsWith("_CHESTPLATE")
                 || n.endsWith("_LEGGINGS")
                 || n.endsWith("_BOOTS");
+    }
+
+    private static String effectsToDebugString(Map<RaffleEffectId, Integer> effects) {
+        if (effects == null || effects.isEmpty()) return "{}";
+        StringBuilder sb = new StringBuilder("{");
+        boolean first = true;
+        for (Map.Entry<RaffleEffectId, Integer> e : effects.entrySet()) {
+            if (!first) sb.append(", ");
+            sb.append(e.getKey().name()).append(":").append(e.getValue());
+            first = false;
+        }
+        sb.append("}");
+        return sb.toString();
     }
 
     // ---------------- result ----------------
