@@ -127,8 +127,24 @@ public final class BossEncountersPlugin extends JavaPlugin {
     }
 
     // -------------------------
+    // REQUIRED GETTERS (fixes your compile errors)
+    // -------------------------
+
+    public NamespacedKey bossKey() {
+        return bossKey;
+    }
+
+    public BossApplier bossApplier() {
+        return bossApplier;
+    }
+
+    // -------------------------
     // Raffle accessors
     // -------------------------
+
+    public RafflePool rafflePool() {
+        return rafflePool;
+    }
 
     public RaffleService raffleService() {
         return raffleService;
