@@ -7,14 +7,6 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
-/**
- * Mapping of raffle effect IDs -> vanilla potion effects.
- *
- * IMPORTANT:
- * - Effect IDs are THEMATIC (vague)
- * - Actual mechanics live here
- * - To add new GOOD effects later, only touch this file
- */
 public final class RafflePotionTable {
 
     private RafflePotionTable() {}
@@ -82,7 +74,7 @@ public final class RafflePotionTable {
 
         list.add(new Entry(
                 RaffleEffectId.SKYBOUND,
-                PotionEffectType.JUMP_BOOST, // <-- FIXED (was JUMP)
+                PotionEffectType.JUMP_BOOST,
                 SlotRule.BOOTS_ONLY,
                 120,
                 true
@@ -94,7 +86,7 @@ public final class RafflePotionTable {
         list.add(new Entry(
                 RaffleEffectId.EMBER_WARD,
                 PotionEffectType.FIRE_RESISTANCE,
-                SlotRule.ANY_ARMOR,
+                SlotRule.CHESTPLATE_ONLY, // <-- UPDATED
                 120,
                 false
         ));
