@@ -1,81 +1,140 @@
-package com.orangeslices.bossencounters.raffle;
+package com.orangeslices.bossencounters.raffle.effects;
 
-import java.util.Locale;
+import com.orangeslices.bossencounters.raffle.RaffleEffectId;
+import org.bukkit.potion.PotionEffectType;
+
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 
 /**
- * Raffle effect IDs stored in PDC as "ID:level,ID:level".
+ * Mapping of raffle effect IDs -> vanilla potion effects.
  *
  * IMPORTANT:
- * - These IDs are intentionally VAGUE / THEMATIC.
- * - The actual mechanics (potion effects, custom logic) are mapped elsewhere.
- *
- * Leveling rules:
- * - Some GOOD effects can level (duplicates level up)
- * - Some GOOD effects are flat (never level)
- * - Curses never level
+ * - Effect IDs are THEMATIC (vague)
+ * - Actual mechanics live here
+ * - To add new GOOD effects later, only touch this file
  */
-public enum RaffleEffectId {
+public final class RafflePotionTable {
 
-    // -------------------------
-    // GOOD (levelable)
-    // -------------------------
-    VITALITY(false, true),        // mapped: Health Boost
-    IRON_WILL(false, true),       // mapped: Resistance (CHESTPLATE only)
-    BLOOD_MENDING(false, true),   // mapped: Regeneration (LEGGINGS only)
-    SKYBOUND(false, true),        // mapped: Jump Boost (BOOTS only)
+    private RafflePotionTable() {}
 
-    // -------------------------
-    // GOOD (flat / non-leveling)
-    // -------------------------
-    EMBER_WARD(false, false),     // mapped: Fire Resistance
-    FORTUNE(false, false),        // mapped: Luck
-    TIDEBOUND(false, false),      // mapped: Conduit Power (HELMET only)
-    OCEAN_GRACE(false, false),    // mapped: Dolphin's Grace (BOOTS only)
-    VILLAGER_FAVOR(false, false), // mapped: Hero of the Village
-
-    // -------------------------
-    // CURSES (non-leveling)
-    // -------------------------
-    DREAD(true, false),
-    MISSTEP(true, false),
-    TERROR(true, false);
-
-    private final boolean curse;
-    private final boolean canLevel;
-
-    RaffleEffectId(boolean curse, boolean canLevel) {
-        this.curse = curse;
-        this.canLevel = canLevel;
+    public enum SlotRule {
+        ANY_ARMOR,
+        HELMET_ONLY,
+        CHESTPLATE_ONLY,
+        LEGGINGS_ONLY,
+        BOOTS_ONLY
     }
 
-    public boolean isCurse() {
-        return curse;
-    }
+    public static final class Entry {
+        public final RaffleEffectId id;
+        public final PotionEffectType potion;
+        public final SlotRule slotRule;
+        public final int durationTicks;
+        public final boolean canLevel;
 
-    public boolean isGood() {
-        return !curse;
-    }
-
-    /**
-     * True only for GOOD effects that are allowed to level up.
-     * (Curses always return false here.)
-     */
-    public boolean canLevel() {
-        return !curse && canLevel;
-    }
-
-    /**
-     * Case-insensitive parse. Returns null if unknown.
-     */
-    public static RaffleEffectId fromString(String raw) {
-        if (raw == null) return null;
-        String key = raw.trim().toUpperCase(Locale.ROOT);
-        if (key.isEmpty()) return null;
-
-        try {
-            return RaffleEffectId.valueOf(key);
-        } catch (IllegalArgumentException ex) {
-            return null;
+        public Entry(
+                RaffleEffectId id,
+                PotionEffectType potion,
+                SlotRule slotRule,
+                int durationTicks,
+                boolean canLevel
+        ) {
+            this.id = id;
+            this.potion = potion;
+            this.slotRule = slotRule;
+            this.durationTicks = durationTicks;
+            this.canLevel = canLevel;
         }
+    }
+
+    private static final List<Entry> ENTRIES;
+    static {
+        List<Entry> list = new ArrayList<>();
+
+        // -------------------------
+        // GOOD (levelable)
+        // -------------------------
+        list.add(new Entry(
+                RaffleEffectId.VITALITY,
+                PotionEffectType.HEALTH_BOOST,
+                SlotRule.ANY_ARMOR,
+                120,
+                true
+        ));
+
+        list.add(new Entry(
+                RaffleEffectId.IRON_WILL,
+                PotionEffectType.RESISTANCE,
+                SlotRule.CHESTPLATE_ONLY,
+                80,
+                true
+        ));
+
+        list.add(new Entry(
+                RaffleEffectId.BLOOD_MENDING,
+                PotionEffectType.REGENERATION,
+                SlotRule.LEGGINGS_ONLY,
+                60,
+                true
+        ));
+
+        list.add(new Entry(
+                RaffleEffectId.SKYBOUND,
+                PotionEffectType.JUMP,
+                SlotRule.BOOTS_ONLY,
+                120,
+                true
+        ));
+
+        // -------------------------
+        // GOOD (flat / non-leveling)
+        // -------------------------
+        list.add(new Entry(
+                RaffleEffectId.EMBER_WARD,
+                PotionEffectType.FIRE_RESISTANCE,
+                SlotRule.ANY_ARMOR,
+                120,
+                false
+        ));
+
+        list.add(new Entry(
+                RaffleEffectId.FORTUNE,
+                PotionEffectType.LUCK,
+                SlotRule.ANY_ARMOR,
+                200,
+                false
+        ));
+
+        list.add(new Entry(
+                RaffleEffectId.TIDEBOUND,
+                PotionEffectType.CONDUIT_POWER,
+                SlotRule.HELMET_ONLY,
+                120,
+                false
+        ));
+
+        list.add(new Entry(
+                RaffleEffectId.OCEAN_GRACE,
+                PotionEffectType.DOLPHINS_GRACE,
+                SlotRule.BOOTS_ONLY,
+                80,
+                false
+        ));
+
+        list.add(new Entry(
+                RaffleEffectId.VILLAGER_FAVOR,
+                PotionEffectType.HERO_OF_THE_VILLAGE,
+                SlotRule.ANY_ARMOR,
+                200,
+                false
+        ));
+
+        ENTRIES = Collections.unmodifiableList(list);
+    }
+
+    public static List<Entry> entries() {
+        return ENTRIES;
     }
 }
