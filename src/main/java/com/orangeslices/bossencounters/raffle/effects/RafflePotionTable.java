@@ -82,7 +82,7 @@ public final class RafflePotionTable {
 
         list.add(new Entry(
                 RaffleEffectId.SKYBOUND,
-                PotionEffectType.JUMP,
+                PotionEffectType.JUMP_BOOST, // <-- FIXED (was JUMP)
                 SlotRule.BOOTS_ONLY,
                 120,
                 true
@@ -94,7 +94,7 @@ public final class RafflePotionTable {
         list.add(new Entry(
                 RaffleEffectId.EMBER_WARD,
                 PotionEffectType.FIRE_RESISTANCE,
-                SlotRule.CHESTPLATE_ONLY,
+                SlotRule.ANY_ARMOR,
                 120,
                 false
         ));
