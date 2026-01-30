@@ -14,13 +14,12 @@ import java.util.Map;
 /**
  * Raffle potion-style effects refresher.
  *
- * This mirrors PotionAddOnListener logic:
+ * Mirrors the stable Potion Add-On approach:
  * - periodic refresh
  * - applyIfBetter()
  * - highest level across armor
  *
- * BUT:
- * - effect mappings live in RafflePotionTable (expandable, no rerouting)
+ * Effect mappings live in RafflePotionTable (expandable).
  */
 public final class RafflePotionEngine {
 
@@ -34,6 +33,7 @@ public final class RafflePotionEngine {
     public void start() {
         stop();
 
+        // start after 1s, refresh every 2s
         task = plugin.getServer().getScheduler().runTaskTimer(
                 plugin,
                 () -> plugin.getServer().getOnlinePlayers().forEach(this::refreshPlayer),
@@ -48,33 +48,48 @@ public final class RafflePotionEngine {
     }
 
     private void refreshPlayer(Player player) {
-        if (player == null) return;
+        if (player == null || !player.isOnline()) return;
 
-        // 1) Collect highest raffle levels across armor
+        // Highest across all armor (for ANY_ARMOR effects and quick lookup)
         Map<RaffleEffectId, Integer> highest = new HashMap<>();
         mergeArmor(highest, player.getInventory().getHelmet());
         mergeArmor(highest, player.getInventory().getChestplate());
         mergeArmor(highest, player.getInventory().getLeggings());
         mergeArmor(highest, player.getInventory().getBoots());
 
-        // 2) Apply potion-style raffle effects from table
         for (RafflePotionTable.Entry entry : RafflePotionTable.entries()) {
-            if (entry == null) continue;
+            if (entry == null || entry.id == null || entry.potion == null) continue;
 
-            int level = highest.getOrDefault(entry.id, 0);
+            int level = resolveLevelForSlotRule(player, entry, highest);
             if (level <= 0) continue;
 
-            // Helmet-only rule
-            if (entry.slotRule == RafflePotionTable.SlotRule.HELMET_ONLY) {
-                ItemStack helmet = player.getInventory().getHelmet();
-                Map<RaffleEffectId, Integer> helmetMap =
-                        RaffleEffectReader.readFromItem(helmet);
-                level = helmetMap.getOrDefault(entry.id, 0);
-                if (level <= 0) continue;
+            // Enforce non-leveling effects
+            if (!entry.canLevel) {
+                level = 1;
             }
 
-            applyIfBetter(player, entry.potion, level, entry.durationTicks);
+            applyIfBetter(player, entry.potion, level, entry.durationTicks, entry.canLevel);
         }
+    }
+
+    private int resolveLevelForSlotRule(Player player, RafflePotionTable.Entry entry, Map<RaffleEffectId, Integer> highest) {
+        return switch (entry.slotRule) {
+            case ANY_ARMOR -> highest.getOrDefault(entry.id, 0);
+
+            case HELMET_ONLY -> readLevelFromPiece(player.getInventory().getHelmet(), entry.id);
+
+            case CHESTPLATE_ONLY -> readLevelFromPiece(player.getInventory().getChestplate(), entry.id);
+
+            case LEGGINGS_ONLY -> readLevelFromPiece(player.getInventory().getLeggings(), entry.id);
+
+            case BOOTS_ONLY -> readLevelFromPiece(player.getInventory().getBoots(), entry.id);
+        };
+    }
+
+    private int readLevelFromPiece(ItemStack armor, RaffleEffectId id) {
+        if (armor == null) return 0;
+        Map<RaffleEffectId, Integer> map = RaffleEffectReader.readFromItem(armor);
+        return map.getOrDefault(id, 0);
     }
 
     private void mergeArmor(Map<RaffleEffectId, Integer> into, ItemStack armor) {
@@ -83,21 +98,18 @@ public final class RafflePotionEngine {
         RaffleEffectReader.mergeHighest(into, map);
     }
 
-    private void applyIfBetter(Player player, PotionEffectType type, int level, int duration) {
+    private void applyIfBetter(Player player, PotionEffectType type, int level, int duration, boolean canLevel) {
         if (type == null || level <= 0) return;
 
-        int amplifier = Math.max(0, level - 1);
-        PotionEffect current = player.getPotionEffect(type);
+        int amplifier = canLevel ? Math.max(0, level - 1) : 0;
 
+        PotionEffect current = player.getPotionEffect(type);
         if (current != null) {
             if (current.getAmplifier() > amplifier) return;
             if (current.getAmplifier() == amplifier && current.getDuration() > duration) return;
         }
 
-        // Same flags as your stable system:
         // ambient=true, particles=false, icon=true
-        player.addPotionEffect(
-                new PotionEffect(type, duration, amplifier, true, false, true)
-        );
+        player.addPotionEffect(new PotionEffect(type, duration, amplifier, true, false, true));
     }
 }
