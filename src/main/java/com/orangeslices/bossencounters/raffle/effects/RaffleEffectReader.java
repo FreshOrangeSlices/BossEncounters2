@@ -1,6 +1,7 @@
 package com.orangeslices.bossencounters.raffle.effects;
 
 import com.orangeslices.bossencounters.raffle.RaffleEffectId;
+import com.orangeslices.bossencounters.raffle.RaffleKeys;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.persistence.PersistentDataContainer;
 import org.bukkit.persistence.PersistentDataType;
@@ -28,10 +29,9 @@ public final class RaffleEffectReader {
         Map<RaffleEffectId, Integer> map = new EnumMap<>(RaffleEffectId.class);
         if (item == null) return map;
 
-        PersistentDataContainer pdc = item.getItemMeta() != null
-                ? item.getItemMeta().getPersistentDataContainer()
-                : null;
-        if (pdc == null) return map;
+        if (item.getItemMeta() == null) return map;
+
+        PersistentDataContainer pdc = item.getItemMeta().getPersistentDataContainer();
 
         String raw = pdc.get(RaffleKeys.RAFFLE_EFFECTS, PersistentDataType.STRING);
         if (raw == null || raw.isBlank()) return map;
