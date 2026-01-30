@@ -6,7 +6,7 @@ import java.util.Locale;
  * Raffle effect IDs stored in PDC as "ID:level,ID:level".
  *
  * IMPORTANT:
- * - IDs are intentionally THEMATIC/VAGUE.
+ * - IDs are intentionally THEMATIC / VAGUE.
  * - fromString() includes aliases so older saved items still work.
  */
 public enum RaffleEffectId {
@@ -51,28 +51,31 @@ public enum RaffleEffectId {
         return !curse;
     }
 
+    /**
+     * True only for GOOD effects that are allowed to level up.
+     * (Curses always return false here.)
+     */
     public boolean canLevel() {
         return !curse && canLevel;
     }
 
     /**
      * Case-insensitive parse with backwards-compatible aliases.
+     * Returns null if unknown.
      */
     public static RaffleEffectId fromString(String raw) {
         if (raw == null) return null;
+
         String key = raw.trim().toUpperCase(Locale.ROOT);
         if (key.isEmpty()) return null;
 
-        // ---- Backwards compatibility aliases ----
-        // Old names you mentioned:
-        // warmth, vigor, unease, disarray
-        //
-        // Adjust here later if your old design meant something different.
+        // ---- Backwards compatibility aliases (old system names) ----
+        // These are intentionally mapped to the closest NEW thematic ID.
         switch (key) {
-            case "WARMTH" -> key = "EMBER_WARD";       // fire resistance vibe
-            case "VIGOR" -> key = "VITALITY";          // health boost vibe
-            case "UNEASE" -> key = "TERROR";           // spooky curse vibe
-            case "DISARRAY" -> key = "MISSTEP";        // chaos/misstep vibe
+            case "WARMTH" -> key = "EMBER_WARD";
+            case "VIGOR" -> key = "VITALITY";
+            case "UNEASE" -> key = "TERROR";
+            case "DISARRAY" -> key = "MISSTEP";
         }
 
         try {
