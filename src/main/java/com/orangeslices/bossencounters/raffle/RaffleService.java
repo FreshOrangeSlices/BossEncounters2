@@ -17,7 +17,7 @@ import java.util.*;
  * - Unified equal pool
  * - Max 1 curse per item
  * - After curse → GOOD-only rolls
- * - GOOD duplicates level up
+ * - GOOD duplicates level up (only if canLevel)
  * - Curses never level
  *
  * Slot Authority:
@@ -89,7 +89,7 @@ public final class RaffleService {
             return ApplyResult.fail("No valid effects to roll for this armor slot.");
         }
 
-        int newLevel = 1;
+        int newLevel;
 
         if (rolled.isCurse()) {
             // Should only happen if hasCurse == false, but keep it safe
@@ -99,13 +99,36 @@ public final class RaffleService {
             }
             effects.put(rolled, 1);
             newLevel = 1;
+
         } else {
-            int current = effects.getOrDefault(rolled, 0);
-            newLevel = current + 1;
-            effects.put(rolled, newLevel);
+            // GOOD effects:
+            // - If it can't level => always 1
+            // - If it can level => increment
+            if (!rolled.canLevel()) {
+                boolean alreadyHas = effects.containsKey(rolled);
+                effects.put(rolled, 1);
+                newLevel = 1;
+
+                // OPTIONAL UX improvement:
+                // If you roll a non-leveling effect you already have, don't consume a slot.
+                // Comment this block out if you want EVERY roll to consume a slot no matter what.
+                if (alreadyHas) {
+                    writeEffects(pdc, effects);
+                    armor.setItemMeta(meta);
+
+                    RaffleDebug.log("ROLLED: " + rolled.name() + " type=GOOD (non-leveling, already owned) -> no slot consumed");
+                    RaffleDebug.log("---- Raffle Apply End ----");
+                    return ApplyResult.success(rolled, newLevel, slotsUsed, maxSlots);
+                }
+
+            } else {
+                int current = effects.getOrDefault(rolled, 0);
+                newLevel = current + 1;
+                effects.put(rolled, newLevel);
+            }
         }
 
-        // Consumes 1 slot every time
+        // Consumes 1 slot every time (except optional block above)
         int beforeSlots = slotsUsed;
         slotsUsed++;
 
@@ -136,17 +159,14 @@ public final class RaffleService {
             if (id == null) continue;
 
             if (hasCurse && id.isCurse()) {
-                // curse-locked: no more curses
                 continue;
             }
 
             if (id.isCurse()) {
-                // Curses: allowed on any armor piece (slot-agnostic)
                 candidates.add(id);
                 continue;
             }
 
-            // Good effects: must be compatible with the armor slot being modified
             if (isGoodEffectCompatibleWithSlot(id, targetSlot)) {
                 candidates.add(id);
             }
@@ -161,20 +181,15 @@ public final class RaffleService {
         return pick;
     }
 
-    /**
-     * Uses RafflePotionTable slot rules as the source of truth for potion-based GOOD effects.
-     * If an effect isn't in the potion table (future custom GOOD), default to allowing it anywhere.
-     */
     private boolean isGoodEffectCompatibleWithSlot(RaffleEffectId id, EquipmentSlot slot) {
         if (id == null || slot == null) return false;
 
-        // Find potion entry (if present)
         RafflePotionTable.Entry entry = null;
         for (RafflePotionTable.Entry e : RafflePotionTable.entries()) {
             if (e.id == id) { entry = e; break; }
         }
 
-        // Not a potion-table effect (ex: future custom GOOD): allow anywhere for now
+        // Not in potion table => allow anywhere (future custom good effects)
         if (entry == null) return true;
 
         return switch (entry.slotRule) {
@@ -235,6 +250,7 @@ public final class RaffleService {
             }
 
             if (id.isCurse()) lvl = 1;
+            if (!id.canLevel()) lvl = 1;
             if (lvl < 1) lvl = 1;
 
             out.put(id, lvl);
@@ -257,6 +273,7 @@ public final class RaffleService {
 
             int lvl = (e.getValue() == null ? 1 : e.getValue());
             if (e.getKey().isCurse()) lvl = 1;
+            if (!e.getKey().canLevel()) lvl = 1;
             if (lvl < 1) lvl = 1;
 
             if (!first) sb.append(",");
