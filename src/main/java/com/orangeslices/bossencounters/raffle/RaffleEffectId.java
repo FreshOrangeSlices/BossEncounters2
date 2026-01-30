@@ -33,7 +33,16 @@ public enum RaffleEffectId {
     // -------------------------
     DREAD(true, false),
     MISSTEP(true, false),
-    TERROR(true, false);
+    TERROR(true, false),
+
+    // New curse pool (expandable)
+    UNEASE(true, false),
+    ECHOES(true, false),
+    DISARRAY(true, false),
+    ON_ALL_FOURS(true, false),
+    MATADOR(true, false),
+    MOTHER_HEN(true, false),
+    IMPOSTER(true, false);
 
     private final boolean curse;
     private final boolean canLevel;
@@ -74,8 +83,10 @@ public enum RaffleEffectId {
         switch (key) {
             case "WARMTH" -> key = "EMBER_WARD";
             case "VIGOR" -> key = "VITALITY";
-            case "UNEASE" -> key = "TERROR";
-            case "DISARRAY" -> key = "MISSTEP";
+
+            // Old saves used these names; now they exist as real curses.
+            case "UNEASE" -> key = "UNEASE";
+            case "DISARRAY" -> key = "DISARRAY";
         }
 
         try {
