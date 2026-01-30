@@ -2,8 +2,11 @@ package com.orangeslices.bossencounters.raffle.effects;
 
 import com.orangeslices.bossencounters.BossEncountersPlugin;
 import com.orangeslices.bossencounters.raffle.RaffleEffectId;
+import org.bukkit.NamespacedKey;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.persistence.PersistentDataContainer;
+import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.potion.PotionEffect;
 import org.bukkit.potion.PotionEffectType;
 import org.bukkit.scheduler.BukkitTask;
@@ -19,6 +22,10 @@ import java.util.Map;
  * - applyIfBetter()
  * - highest level across armor
  *
+ * This engine is AUTHORITATIVE for raffle-applied potion effects:
+ * - It will re-apply every refresh to keep them hidden (no HUD/inventory icons).
+ * - It will not downgrade stronger external effects.
+ *
  * Effect mappings live in RafflePotionTable (expandable).
  */
 public final class RafflePotionEngine {
@@ -26,8 +33,12 @@ public final class RafflePotionEngine {
     private final BossEncountersPlugin plugin;
     private BukkitTask task;
 
+    // Marks that a specific PotionEffectType is being managed by this engine
+    private final NamespacedKey managedKey;
+
     public RafflePotionEngine(BossEncountersPlugin plugin) {
         this.plugin = plugin;
+        this.managedKey = new NamespacedKey(plugin, "raffle_potion_managed"); // stores CSV list
     }
 
     public void start() {
@@ -68,20 +79,16 @@ public final class RafflePotionEngine {
                 level = 1;
             }
 
-            applyIfBetter(player, entry.potion, level, entry.durationTicks, entry.canLevel);
+            applyAuthoritative(player, entry.potion, level, entry.durationTicks, entry.canLevel);
         }
     }
 
     private int resolveLevelForSlotRule(Player player, RafflePotionTable.Entry entry, Map<RaffleEffectId, Integer> highest) {
         return switch (entry.slotRule) {
             case ANY_ARMOR -> highest.getOrDefault(entry.id, 0);
-
             case HELMET_ONLY -> readLevelFromPiece(player.getInventory().getHelmet(), entry.id);
-
             case CHESTPLATE_ONLY -> readLevelFromPiece(player.getInventory().getChestplate(), entry.id);
-
             case LEGGINGS_ONLY -> readLevelFromPiece(player.getInventory().getLeggings(), entry.id);
-
             case BOOTS_ONLY -> readLevelFromPiece(player.getInventory().getBoots(), entry.id);
         };
     }
@@ -98,19 +105,55 @@ public final class RafflePotionEngine {
         RaffleEffectReader.mergeHighest(into, map);
     }
 
-    private void applyIfBetter(Player player, PotionEffectType type, int level, int duration, boolean canLevel) {
+    /**
+     * AUTHORITATIVE application:
+     * - Always re-applies our hidden version to prevent HUD/inventory showing.
+     * - Never downgrades stronger external effects.
+     * - If an external effect exists with same amplifier but longer duration, we still overwrite to hide.
+     */
+    private void applyAuthoritative(Player player, PotionEffectType type, int level, int duration, boolean canLevel) {
         if (type == null || level <= 0) return;
 
         int amplifier = canLevel ? Math.max(0, level - 1) : 0;
 
         PotionEffect current = player.getPotionEffect(type);
         if (current != null) {
+            // Never downgrade stronger effects from other sources
             if (current.getAmplifier() > amplifier) return;
-            if (current.getAmplifier() == amplifier && current.getDuration() > duration) return;
         }
 
-        // Hide visuals:
-        // ambient=true (keeps it subtle), particles=false, icon=false (THIS hides inventory/HUD)
+        // Apply hidden visuals (ambient=true, particles=false, icon=false)
         player.addPotionEffect(new PotionEffect(type, duration, amplifier, true, false, false));
+
+        // Mark this type as managed so we can reason about cleanup later if needed
+        markManaged(player, type);
+    }
+
+    private void markManaged(Player player, PotionEffectType type) {
+        try {
+            PersistentDataContainer pdc = player.getPersistentDataContainer();
+            String existing = pdc.get(managedKey, PersistentDataType.STRING);
+            String token = type.getKey().toString();
+
+            if (existing == null || existing.isBlank()) {
+                pdc.set(managedKey, PersistentDataType.STRING, token);
+                return;
+            }
+
+            // If already tracked, do nothing
+            if (containsToken(existing, token)) return;
+
+            pdc.set(managedKey, PersistentDataType.STRING, existing + "," + token);
+        } catch (Throwable ignored) {
+            // If anything goes weird with PDC, we still applied the effect;
+            // tracking is optional.
+        }
+    }
+
+    private boolean containsToken(String csv, String token) {
+        for (String part : csv.split(",")) {
+            if (part.trim().equals(token)) return true;
+        }
+        return false;
     }
 }
