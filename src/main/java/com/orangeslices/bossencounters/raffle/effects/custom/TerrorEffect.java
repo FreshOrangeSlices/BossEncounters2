@@ -18,6 +18,10 @@ import java.util.UUID;
  * - Applies Darkness for ~10 seconds
  * - Plays Warden roar with a cooldown (no spam)
  * - Clears Darkness immediately when removed
+ *
+ * Visuals:
+ * - No particles
+ * - No inventory icon (hidden)
  */
 public final class TerrorEffect implements RaffleCustomEffect {
 
@@ -35,7 +39,7 @@ public final class TerrorEffect implements RaffleCustomEffect {
     public void apply(Player player, int level) {
         if (player == null || !player.isOnline()) return;
 
-        // Apply darkness (ambient, no particles, icon shown)
+        // Apply darkness (ambient, no particles, icon hidden)
         player.addPotionEffect(
                 new PotionEffect(
                         PotionEffectType.DARKNESS,
@@ -43,7 +47,7 @@ public final class TerrorEffect implements RaffleCustomEffect {
                         0,
                         true,
                         false,
-                        true
+                        false
                 )
         );
 
