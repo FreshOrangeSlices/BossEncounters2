@@ -16,10 +16,6 @@ import java.util.concurrent.ConcurrentHashMap;
  * Design intent:
  * - "my feet betrayed me"
  * - brief movement sabotage without being a permanent grief
- *
- * Implementation:
- * - Slowness + Jump reduction (feels like stumbling)
- * - quick sound cue
  */
 public final class MisstepEffect implements RaffleCustomEffect {
 
@@ -37,15 +33,16 @@ public final class MisstepEffect implements RaffleCustomEffect {
     public void apply(Player player, int level) {
         if (player == null || !player.isOnline()) return;
 
-        player.addPotionEffect(new PotionEffect(PotionEffectType.SLOW, DURATION_TICKS, 1, true, false, false));
-        player.addPotionEffect(new PotionEffect(PotionEffectType.JUMP, DURATION_TICKS, 250, true, false, false)); 
-        // amplifier 250 is the "anti-jump" trick: makes jumping basically fail
+        player.addPotionEffect(new PotionEffect(PotionEffectType.SLOWNESS, DURATION_TICKS, 1, true, false, false));
+
+        // "Anti-jump" trick using JUMP_BOOST with a huge amplifier
+        // (works as "can't jump" on modern versions)
+        player.addPotionEffect(new PotionEffect(PotionEffectType.JUMP_BOOST, DURATION_TICKS, 250, true, false, false));
 
         long now = System.currentTimeMillis();
         long last = lastSoundAt.getOrDefault(player.getUniqueId(), 0L);
         if (now - last >= SOUND_COOLDOWN_MS) {
             lastSoundAt.put(player.getUniqueId(), now);
-
             player.playSound(player.getLocation(), Sound.ENTITY_PLAYER_HURT_SWEET_BERRY_BUSH, 0.6f, 0.9f);
         }
     }
@@ -54,8 +51,8 @@ public final class MisstepEffect implements RaffleCustomEffect {
     public void clear(Player player) {
         if (player == null) return;
 
-        player.removePotionEffect(PotionEffectType.SLOW);
-        player.removePotionEffect(PotionEffectType.JUMP);
+        player.removePotionEffect(PotionEffectType.SLOWNESS);
+        player.removePotionEffect(PotionEffectType.JUMP_BOOST);
 
         lastSoundAt.remove(player.getUniqueId());
     }
