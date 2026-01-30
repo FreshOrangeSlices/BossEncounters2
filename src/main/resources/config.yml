@@ -1,29 +1,159 @@
 # ===============================
-# Raffle Add-On System (NEW)
+# Boss Spawn Settings
+# ===============================
+spawn:
+  one_in: 250
+
+mobs:
+  whitelist:
+    - ZOMBIE
+    - SKELETON
+    - SPIDER
+    - HUSK
+    - STRAY
+
+# ===============================
+# Messaging
+# ===============================
+messages:
+  enabled: true
+  radius: 40
+  mode: "ACTIONBAR"
+
+  spawn:
+    enabled: true
+    format: "&6A {rank_color}{title}{mob} &6wanders nearby..."
+
+  death:
+    enabled: true
+    format: "&aDefeated: {rank_color}{title}{mob} &e(+{rank_xp}x XP)"
+
+  despawn:
+    enabled: true
+    format: "&7Faded: {rank_color}{title}{mob}"
+
+# ===============================
+# Despawn Rules
+# ===============================
+despawn:
+  enabled: true
+  after_seconds: 120
+  only_if_no_players_within: 48
+  require_no_target: true
+
+# ===============================
+# Rewards
+# ===============================
+rewards:
+  xp_multiplier: 1.0
+
+# ===============================
+# FX
+# ===============================
+fx:
+  spawn:
+    enabled: true
+    radius: 24
+    sound: "ENTITY_WITHER_SPAWN"
+    volume: 0.45
+    pitch: 1.1
+    particles:
+      GRAY: 8
+      GREEN: 12
+      RED: 16
+      PURPLE: 22
+      GOLD: 30
+
+# ===============================
+# Boss Nameplate
+# ===============================
+boss:
+  name:
+    enabled: true
+    text: "Boss"
+    color: "&c"
+    show_rank_label: false
+    brackets: false
+
+# ===============================
+# Rank Definitions
+# ===============================
+ranks:
+  GRAY:
+    label: "Hard"
+    color: "&7"
+    xp_multiplier: 10
+    max_affixes: 1
+    stats:
+      health_multiplier: 4.5
+      damage_multiplier: 1.7
+      speed_multiplier: 1.35
+    weight: 50
+
+  GREEN:
+    label: "Very Hard"
+    color: "&a"
+    xp_multiplier: 25
+    max_affixes: 2
+    stats:
+      health_multiplier: 5.5
+      damage_multiplier: 1.9
+      speed_multiplier: 1.42
+    weight: 20
+
+  RED:
+    label: "Brutal"
+    color: "&c"
+    xp_multiplier: 45
+    max_affixes: 3
+    stats:
+      health_multiplier: 6.5
+      damage_multiplier: 2.15
+      speed_multiplier: 1.48
+    weight: 15
+
+  PURPLE:
+    label: "Nightmare"
+    color: "&5"
+    xp_multiplier: 70
+    max_affixes: 3
+    stats:
+      health_multiplier: 8.0
+      damage_multiplier: 2.4
+      speed_multiplier: 1.55
+    weight: 10
+
+  GOLD:
+    label: "Legendary"
+    color: "&6"
+    xp_multiplier: 100
+    max_affixes: 4
+    stats:
+      health_multiplier: 10.0
+      damage_multiplier: 2.8
+      speed_multiplier: 1.62
+    weight: 5
+
+# ===============================
+# Raffle Add-On System (CURRENT)
 # ===============================
 raffle:
-  # Debug logs in console (RaffleDebug)
   debug: true
 
-  # How many add-on slots an armor piece can hold
   max_slots_per_armor: 3
 
-  # Anti-double-fire / anti-macro spam (technical guardrail)
-  # 0 = disabled (not recommended)
+  # Anti-spam / macro guard
   cooldown_ms: 250
 
-  # Interaction rules (keeps UX consistent)
   require_token_mainhand: true
   require_armor_offhand: true
 
-  # Player feedback (color codes supported)
   message:
     success: "&dSomething shifts within the armor..."
     fail_no_armor: "&cHold armor in your offhand."
     fail_not_armor: "&cThat item isn't armor."
     fail_generic: "&c{reason}"
 
-  # Sounds (set enabled false to disable)
   sound:
     success:
       enabled: true
@@ -36,32 +166,25 @@ raffle:
       volume: 0.7
       pitch: 0.9
 
-  # Unified pool (equal chance) — THEMATIC IDs ONLY
-  # GOOD:
-  # - VITALITY        (Health Boost)         ANY
-  # - IRON_WILL       (Resistance)           CHESTPLATE only
-  # - BLOOD_MENDING   (Regeneration)         LEGGINGS only
-  # - SKYBOUND        (Jump Boost)           BOOTS only
-  # - EMBER_WARD      (Fire Resistance)      ANY (flat)
-  # - FORTUNE         (Luck)                 ANY (flat)
-  # - TIDEBOUND       (Conduit Power)        HELMET only (flat)
-  # - OCEAN_GRACE     (Dolphin's Grace)      BOOTS only (flat)
-  # - VILLAGER_FAVOR  (Hero of the Village)  ANY (flat)
-  #
-  # CURSES:
-  # - TERROR
-  # - DREAD
-  # - MISSTEP
+  # ------------------------------------------------
+  # EFFECT POOL
+  # NOTE:
+  # Slot authority is enforced in code.
+  # These are SAFE to roll on any armor,
+  # incompatible effects will be filtered.
+  # ------------------------------------------------
   effects:
-    - VITALITY
-    - IRON_WILL
-    - BLOOD_MENDING
-    - SKYBOUND
-    - EMBER_WARD
-    - FORTUNE
-    - TIDEBOUND
-    - OCEAN_GRACE
-    - VILLAGER_FAVOR
-    - TERROR
-    - DREAD
-    - MISSTEP
+    # ===== POSITIVE =====
+    - VITALITY          # Health Boost (any)
+    - IRON_WILL         # Resistance (CHEST)
+    - BLOOD_MENDING     # Regeneration (LEGS)
+    - SKYBOUND          # Jump Boost (BOOTS)
+    - EMBER_WARD        # Fire Resistance (CHEST)
+    - FORTUNE           # Luck (any)
+    - TIDEBOUND         # Conduit Power (HELMET)
+    - OCEAN_GRACE       # Dolphin's Grace (BOOTS)
+    - VILLAGER_FAVOR    # Hero of the Village (any)
+
+    # ===== CURSES =====
+    - TERROR            # Darkness + Warden Roar
+    # - UNEASE           # (planned) Nausea on equip
