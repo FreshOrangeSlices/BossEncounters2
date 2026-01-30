@@ -1,8 +1,7 @@
 package com.orangeslices.bossencounters.raffle;
 
-import com.orangeslices.bossencounters.raffle.effects.RafflePotionTable;
-import org.bukkit.inventory.EquipmentSlot;
 import com.orangeslices.bossencounters.BossEncountersPlugin;
+import com.orangeslices.bossencounters.raffle.effects.RafflePotionTable;
 import org.bukkit.ChatColor;
 import org.bukkit.Material;
 import org.bukkit.Sound;
@@ -32,7 +31,6 @@ import java.util.concurrent.ConcurrentHashMap;
 public final class RaffleApplyListener implements Listener {
 
     private final BossEncountersPlugin plugin;
-
     private final ConcurrentHashMap<UUID, Long> lastUseMs = new ConcurrentHashMap<>();
 
     public RaffleApplyListener(BossEncountersPlugin plugin) {
@@ -67,7 +65,6 @@ public final class RaffleApplyListener implements Listener {
 
         // If config requires mainhand token, enforce it
         if (requireTokenMainhand && !mainIsToken) {
-            // token is in offhand but we require mainhand token
             event.setCancelled(true);
             sendFail(player, cfg, "raffle.message.fail_generic", "Hold the token in your main hand.");
             playFailSound(player, cfg);
@@ -76,7 +73,6 @@ public final class RaffleApplyListener implements Listener {
 
         // If config requires armor offhand, enforce it
         if (requireArmorOffhand && mainIsToken) {
-            // main token → armor must be offhand
             if (off == null || off.getType() == Material.AIR) {
                 event.setCancelled(true);
                 sendFail(player, cfg, "raffle.message.fail_no_armor", null);
@@ -159,7 +155,6 @@ public final class RaffleApplyListener implements Listener {
     private void consumeOne(Player player, ItemStack stackRef) {
         if (stackRef == null || stackRef.getType() == Material.AIR) return;
 
-        // Consume based on where it is (main vs offhand)
         ItemStack main = player.getInventory().getItemInMainHand();
         ItemStack off = player.getInventory().getItemInOffHand();
 
@@ -198,9 +193,7 @@ public final class RaffleApplyListener implements Listener {
 
     private boolean isSameItemRef(ItemStack a, ItemStack b) {
         // Same reference check first (fast path)
-        if (a == b) return true;
-        // Fallback: same material + same meta + same amount isn't safe enough; we avoid overthinking.
-        return false;
+        return a == b;
     }
 
     private void sendFail(Player p, FileConfiguration cfg, String key, String fallbackReason) {
@@ -253,33 +246,40 @@ public final class RaffleApplyListener implements Listener {
     private String color(String s) {
         if (s == null) return "";
         return ChatColor.translateAlternateColorCodes('&', s);
-        private EquipmentSlot armorSlot(ItemStack armor) {
-    if (armor == null || armor.getType() == null) return null;
-
-    String t = armor.getType().name();
-    if (t.endsWith("_HELMET")) return EquipmentSlot.HEAD;
-    if (t.endsWith("_CHESTPLATE")) return EquipmentSlot.CHEST;
-    if (t.endsWith("_LEGGINGS")) return EquipmentSlot.LEGS;
-    if (t.endsWith("_BOOTS")) return EquipmentSlot.FEET;
-
-    return null;
-}
-
-private boolean isEffectCompatibleWithSlot(RaffleEffectId id, EquipmentSlot slot) {
-    if (id == null || slot == null) return false;
-
-    // If it's NOT a potion-table effect (ex: custom curse), allow it on any armor
-    RafflePotionTable.Entry entry = null;
-    for (RafflePotionTable.Entry e : RafflePotionTable.entries()) {
-        if (e.id == id) { entry = e; break; }
     }
-    if (entry == null) return true;
 
-    return switch (entry.slotRule) {
-        case ANY_ARMOR -> true;
-        case HELMET_ONLY -> slot == EquipmentSlot.HEAD;
-        case CHESTPLATE_ONLY -> slot == EquipmentSlot.CHEST;
-        case LEGGINGS_ONLY -> slot == EquipmentSlot.LEGS;
-        case BOOTS_ONLY -> slot == EquipmentSlot.FEET;
-    };
+    // ---------------------------
+    // Helpers (safe placement)
+    // ---------------------------
+
+    private EquipmentSlot armorSlot(ItemStack armor) {
+        if (armor == null || armor.getType() == null) return null;
+
+        String t = armor.getType().name();
+        if (t.endsWith("_HELMET")) return EquipmentSlot.HEAD;
+        if (t.endsWith("_CHESTPLATE")) return EquipmentSlot.CHEST;
+        if (t.endsWith("_LEGGINGS")) return EquipmentSlot.LEGS;
+        if (t.endsWith("_BOOTS")) return EquipmentSlot.FEET;
+
+        return null;
+    }
+
+    private boolean isEffectCompatibleWithSlot(RaffleEffectId id, EquipmentSlot slot) {
+        if (id == null || slot == null) return false;
+
+        // If it's NOT a potion-table effect (ex: custom curse), allow it on any armor
+        RafflePotionTable.Entry entry = null;
+        for (RafflePotionTable.Entry e : RafflePotionTable.entries()) {
+            if (e.id == id) { entry = e; break; }
+        }
+        if (entry == null) return true;
+
+        return switch (entry.slotRule) {
+            case ANY_ARMOR -> true;
+            case HELMET_ONLY -> slot == EquipmentSlot.HEAD;
+            case CHESTPLATE_ONLY -> slot == EquipmentSlot.CHEST;
+            case LEGGINGS_ONLY -> slot == EquipmentSlot.LEGS;
+            case BOOTS_ONLY -> slot == EquipmentSlot.FEET;
+        };
+    }
 }
