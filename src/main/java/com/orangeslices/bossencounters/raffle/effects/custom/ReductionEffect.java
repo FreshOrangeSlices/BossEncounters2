@@ -9,12 +9,6 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 
-/**
- * REDUCTION curse
- * - Applies player scale shrink while the cursed armor is worn.
- * - Restores original scale when removed.
- * - NO fallback (per your requirement).
- */
 public final class ReductionEffect implements RaffleCustomEffect {
 
     private static final double REDUCED_SCALE = 0.60;
@@ -30,7 +24,7 @@ public final class ReductionEffect implements RaffleCustomEffect {
     public void apply(Player player, int level) {
         if (player == null || !player.isOnline()) return;
 
-        AttributeInstance scale = player.getAttribute(Attribute.GENERIC_SCALE);
+        AttributeInstance scale = getScaleAttribute(player);
         if (scale == null) return; // no fallback
 
         UUID id = player.getUniqueId();
@@ -42,12 +36,25 @@ public final class ReductionEffect implements RaffleCustomEffect {
     public void clear(Player player) {
         if (player == null) return;
 
-        AttributeInstance scale = player.getAttribute(Attribute.GENERIC_SCALE);
+        AttributeInstance scale = getScaleAttribute(player);
         if (scale == null) return;
 
         Double original = originalScale.remove(player.getUniqueId());
         if (original != null) {
             scale.setBaseValue(original);
+        }
+    }
+
+    /**
+     * Some compile targets don't expose Attribute.GENERIC_SCALE.
+     * Resolve by name when available. If not available, do nothing (no fallback).
+     */
+    private static AttributeInstance getScaleAttribute(Player player) {
+        try {
+            Attribute scaleAttr = Attribute.valueOf("GENERIC_SCALE");
+            return player.getAttribute(scaleAttr);
+        } catch (IllegalArgumentException ignored) {
+            return null;
         }
     }
 }
