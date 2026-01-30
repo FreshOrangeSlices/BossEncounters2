@@ -12,13 +12,10 @@ import java.util.*;
 /**
  * Engine for NON-potion raffle effects (curses & custom mechanics).
  *
- * Pattern:
- * - Periodic refresh (same philosophy as potion engine)
- * - Reads raffle effects from armor
- * - Calls apply() while active
- * - Calls clear() when effect disappears
- *
- * This engine should NOT be modified when adding new effects.
+ * Key behavior:
+ * - GOOD custom effects (future) may apply repeatedly if desired
+ * - CURSES should TRIGGER ONCE when they become active
+ * - clear() is called when the effect disappears
  */
 public final class RaffleCustomEffectEngine {
 
@@ -37,8 +34,9 @@ public final class RaffleCustomEffectEngine {
     }
 
     private void registerDefaults() {
-        // Register custom effects here (additive, never reroute)
         register(new TerrorEffect());
+        // future: register(new MisstepEffect());
+        // future: register(new DreadEffect());
     }
 
     private void register(RaffleCustomEffect effect) {
@@ -89,7 +87,7 @@ public final class RaffleCustomEffectEngine {
         mergeArmor(highest, player.getInventory().getLeggings());
         mergeArmor(highest, player.getInventory().getBoots());
 
-        // 2) Determine which custom effects should be active
+        // 2) Determine which custom effects should be active NOW
         Set<RaffleEffectId> nowActive = new HashSet<>();
         for (Map.Entry<RaffleEffectId, Integer> e : highest.entrySet()) {
             RaffleEffectId id = e.getKey();
@@ -98,23 +96,44 @@ public final class RaffleCustomEffectEngine {
             if (level <= 0) continue;
             if (!registry.containsKey(id)) continue;
 
+            nowActive.add(id);
+        }
+
+        // 3) Compare to previous to find newly-added and removed effects
+        Set<RaffleEffectId> prev = activeByPlayer.getOrDefault(uuid, Collections.emptySet());
+
+        // Newly activated effects
+        for (RaffleEffectId id : nowActive) {
+            if (prev.contains(id)) continue;
+
             RaffleCustomEffect effect = registry.get(id);
             if (effect == null) continue;
 
-            nowActive.add(id);
-            effect.apply(player, level);
+            int level = highest.getOrDefault(id, 1);
+
+            // CURSES: trigger once on activation
+            if (id.isCurse()) {
+                effect.apply(player, level);
+            } else {
+                // Custom GOOD effects (future): apply immediately as well
+                effect.apply(player, level);
+            }
         }
 
-        // 3) Clear effects that are no longer present
-        Set<RaffleEffectId> previouslyActive =
-                activeByPlayer.getOrDefault(uuid, Collections.emptySet());
+        // Effects that remain active:
+        // - For now, we do NOTHING each refresh for curses (prevents spam).
+        // - If we add custom GOOD effects later that need periodic refresh,
+        //   we can add a flag/interface method (e.g., isContinuous()).
+        //
+        // Intentionally no repeated apply() calls here.
 
-        for (RaffleEffectId id : previouslyActive) {
-            if (!nowActive.contains(id)) {
-                RaffleCustomEffect effect = registry.get(id);
-                if (effect != null) {
-                    effect.clear(player);
-                }
+        // Removed effects: clear them
+        for (RaffleEffectId id : prev) {
+            if (nowActive.contains(id)) continue;
+
+            RaffleCustomEffect effect = registry.get(id);
+            if (effect != null) {
+                effect.clear(player);
             }
         }
 
