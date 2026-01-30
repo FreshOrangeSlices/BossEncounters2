@@ -1,6 +1,8 @@
 package com.orangeslices.bossencounters.raffle;
 
+import com.orangeslices.bossencounters.raffle.effects.RafflePotionTable;
 import org.bukkit.Material;
+import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.persistence.PersistentDataContainer;
@@ -17,6 +19,10 @@ import java.util.*;
  * - After curse → GOOD-only rolls
  * - GOOD duplicates level up
  * - Curses never level
+ *
+ * Slot Authority:
+ * - When applying to a specific armor piece, ONLY roll effects compatible with that armor slot.
+ * - Curses are allowed on any armor piece (slot-agnostic), unless you later decide otherwise.
  */
 public final class RaffleService {
 
@@ -47,6 +53,11 @@ public final class RaffleService {
             return ApplyResult.fail("Armor has no meta.");
         }
 
+        EquipmentSlot targetSlot = armorSlot(armor.getType());
+        if (targetSlot == null) {
+            return ApplyResult.fail("Could not determine armor slot.");
+        }
+
         PersistentDataContainer pdc = meta.getPersistentDataContainer();
 
         Map<RaffleEffectId, Integer> effects = readEffects(pdc);
@@ -56,6 +67,7 @@ public final class RaffleService {
 
         RaffleDebug.log("---- Raffle Apply Start ----");
         RaffleDebug.log("Item=" + armor.getType().name()
+                + " slot=" + targetSlot.name()
                 + " slotsUsed=" + slotsUsed + "/" + maxSlots
                 + " effects=" + effectsToDebugString(effects)
                 + " hasCurse=" + hasCurse);
@@ -70,10 +82,11 @@ public final class RaffleService {
             return ApplyResult.fail("Raffle pool is empty.");
         }
 
-        RaffleEffectId rolled = roll(hasCurse);
+        RaffleEffectId rolled = rollForSlot(hasCurse, targetSlot);
         if (rolled == null) {
-            RaffleDebug.log("FAIL: no valid roll (likely curse-locked with no GOOD effects configured).");
-            return ApplyResult.fail("No valid effects to roll.");
+            RaffleDebug.log("FAIL: no valid roll for slot=" + targetSlot.name()
+                    + " (likely misconfigured pool / curse-locked with no valid GOOD effects).");
+            return ApplyResult.fail("No valid effects to roll for this armor slot.");
         }
 
         int newLevel = 1;
@@ -111,27 +124,76 @@ public final class RaffleService {
         return ApplyResult.success(rolled, newLevel, slotsUsed, maxSlots);
     }
 
-    private RaffleEffectId roll(boolean hasCurse) {
-        if (!hasCurse) {
-            RaffleEffectId id = pool.roll();
-            RaffleDebug.log("ROLL MODE: full pool -> " + (id == null ? "null" : id.name()));
-            return id;
-        }
+    /**
+     * Slot-authoritative roll:
+     * - If curse-locked => only GOOD effects compatible with this slot
+     * - If not curse-locked => GOOD effects compatible with slot + (any curses)
+     */
+    private RaffleEffectId rollForSlot(boolean hasCurse, EquipmentSlot targetSlot) {
+        List<RaffleEffectId> candidates = new ArrayList<>();
 
-        // curse-locked: only GOOD
-        List<RaffleEffectId> goods = new ArrayList<>();
         for (RaffleEffectId id : pool.snapshot()) {
-            if (id != null && id.isGood()) goods.add(id);
+            if (id == null) continue;
+
+            if (hasCurse && id.isCurse()) {
+                // curse-locked: no more curses
+                continue;
+            }
+
+            if (id.isCurse()) {
+                // Curses: allowed on any armor piece (slot-agnostic)
+                candidates.add(id);
+                continue;
+            }
+
+            // Good effects: must be compatible with the armor slot being modified
+            if (isGoodEffectCompatibleWithSlot(id, targetSlot)) {
+                candidates.add(id);
+            }
         }
 
-        if (goods.isEmpty()) {
-            RaffleDebug.log("ROLL MODE: GOOD-only (curse-locked) but goods list is empty.");
-            return null;
-        }
+        if (candidates.isEmpty()) return null;
 
-        RaffleEffectId pick = goods.get(RNG.nextInt(goods.size()));
-        RaffleDebug.log("ROLL MODE: GOOD-only (curse-locked) -> " + pick.name());
+        RaffleEffectId pick = candidates.get(RNG.nextInt(candidates.size()));
+        RaffleDebug.log("ROLL MODE: slot=" + targetSlot.name()
+                + (hasCurse ? " GOOD-only" : " slot-filtered")
+                + " -> " + pick.name());
         return pick;
+    }
+
+    /**
+     * Uses RafflePotionTable slot rules as the source of truth for potion-based GOOD effects.
+     * If an effect isn't in the potion table (future custom GOOD), default to allowing it anywhere.
+     */
+    private boolean isGoodEffectCompatibleWithSlot(RaffleEffectId id, EquipmentSlot slot) {
+        if (id == null || slot == null) return false;
+
+        // Find potion entry (if present)
+        RafflePotionTable.Entry entry = null;
+        for (RafflePotionTable.Entry e : RafflePotionTable.entries()) {
+            if (e.id == id) { entry = e; break; }
+        }
+
+        // Not a potion-table effect (ex: future custom GOOD): allow anywhere for now
+        if (entry == null) return true;
+
+        return switch (entry.slotRule) {
+            case ANY_ARMOR -> true;
+            case HELMET_ONLY -> slot == EquipmentSlot.HEAD;
+            case CHESTPLATE_ONLY -> slot == EquipmentSlot.CHEST;
+            case LEGGINGS_ONLY -> slot == EquipmentSlot.LEGS;
+            case BOOTS_ONLY -> slot == EquipmentSlot.FEET;
+        };
+    }
+
+    private static EquipmentSlot armorSlot(Material mat) {
+        if (mat == null) return null;
+        String n = mat.name();
+        if (n.endsWith("_HELMET")) return EquipmentSlot.HEAD;
+        if (n.endsWith("_CHESTPLATE")) return EquipmentSlot.CHEST;
+        if (n.endsWith("_LEGGINGS")) return EquipmentSlot.LEGS;
+        if (n.endsWith("_BOOTS")) return EquipmentSlot.FEET;
+        return null;
     }
 
     private static boolean hasCurse(Map<RaffleEffectId, Integer> effects) {
