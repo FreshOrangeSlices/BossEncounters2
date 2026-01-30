@@ -109,7 +109,8 @@ public final class RafflePotionEngine {
             if (current.getAmplifier() == amplifier && current.getDuration() > duration) return;
         }
 
-        // ambient=true, particles=false, icon=true
-        player.addPotionEffect(new PotionEffect(type, duration, amplifier, true, false, true));
+        // Hide visuals:
+        // ambient=true (keeps it subtle), particles=false, icon=false (THIS hides inventory/HUD)
+        player.addPotionEffect(new PotionEffect(type, duration, amplifier, true, false, false));
     }
 }
