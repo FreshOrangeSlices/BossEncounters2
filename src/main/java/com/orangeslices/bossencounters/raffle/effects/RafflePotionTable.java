@@ -1,61 +1,81 @@
-package com.orangeslices.bossencounters.raffle.effects;
+package com.orangeslices.bossencounters.raffle;
 
-import com.orangeslices.bossencounters.raffle.RaffleEffectId;
-import org.bukkit.potion.PotionEffectType;
-
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
+import java.util.Locale;
 
 /**
- * Expandable mapping of raffle effect IDs -> vanilla potion effects.
+ * Raffle effect IDs stored in PDC as "ID:level,ID:level".
  *
- * This is intentionally a "pool table":
- * - To add a new potion-style raffle effect later, add one entry here.
- * - The engine stays stable and never needs rerouting.
+ * IMPORTANT:
+ * - These IDs are intentionally VAGUE / THEMATIC.
+ * - The actual mechanics (potion effects, custom logic) are mapped elsewhere.
+ *
+ * Leveling rules:
+ * - Some GOOD effects can level (duplicates level up)
+ * - Some GOOD effects are flat (never level)
+ * - Curses never level
  */
-public final class RafflePotionTable {
+public enum RaffleEffectId {
 
-    private RafflePotionTable() {}
+    // -------------------------
+    // GOOD (levelable)
+    // -------------------------
+    VITALITY(false, true),        // mapped: Health Boost
+    IRON_WILL(false, true),       // mapped: Resistance (CHESTPLATE only)
+    BLOOD_MENDING(false, true),   // mapped: Regeneration (LEGGINGS only)
+    SKYBOUND(false, true),        // mapped: Jump Boost (BOOTS only)
 
-    public enum SlotRule {
-        ANY_ARMOR,      // helmet/chest/legs/boots all count (highest level wins across armor)
-        HELMET_ONLY     // only helmet counts (future-proofing)
+    // -------------------------
+    // GOOD (flat / non-leveling)
+    // -------------------------
+    EMBER_WARD(false, false),     // mapped: Fire Resistance
+    FORTUNE(false, false),        // mapped: Luck
+    TIDEBOUND(false, false),      // mapped: Conduit Power (HELMET only)
+    OCEAN_GRACE(false, false),    // mapped: Dolphin's Grace (BOOTS only)
+    VILLAGER_FAVOR(false, false), // mapped: Hero of the Village
+
+    // -------------------------
+    // CURSES (non-leveling)
+    // -------------------------
+    DREAD(true, false),
+    MISSTEP(true, false),
+    TERROR(true, false);
+
+    private final boolean curse;
+    private final boolean canLevel;
+
+    RaffleEffectId(boolean curse, boolean canLevel) {
+        this.curse = curse;
+        this.canLevel = canLevel;
     }
 
-    public static final class Entry {
-        public final RaffleEffectId id;
-        public final PotionEffectType potion;
-        public final SlotRule slotRule;
-        public final int durationTicks;
+    public boolean isCurse() {
+        return curse;
+    }
 
-        public Entry(RaffleEffectId id, PotionEffectType potion, SlotRule slotRule, int durationTicks) {
-            this.id = id;
-            this.potion = potion;
-            this.slotRule = slotRule;
-            this.durationTicks = durationTicks;
+    public boolean isGood() {
+        return !curse;
+    }
+
+    /**
+     * True only for GOOD effects that are allowed to level up.
+     * (Curses always return false here.)
+     */
+    public boolean canLevel() {
+        return !curse && canLevel;
+    }
+
+    /**
+     * Case-insensitive parse. Returns null if unknown.
+     */
+    public static RaffleEffectId fromString(String raw) {
+        if (raw == null) return null;
+        String key = raw.trim().toUpperCase(Locale.ROOT);
+        if (key.isEmpty()) return null;
+
+        try {
+            return RaffleEffectId.valueOf(key);
+        } catch (IllegalArgumentException ex) {
+            return null;
         }
-    }
-
-    // Keep this list small for now. Expand freely later.
-    private static final List<Entry> ENTRIES;
-    static {
-        List<Entry> list = new ArrayList<>();
-
-        // Baseline safe mappings:
-        // - VITALITY -> Health Boost
-        // - EMBER_WARD -> Fire Resistance
-        list.add(new Entry(RaffleEffectId.VITALITY, PotionEffectType.HEALTH_BOOST, SlotRule.ANY_ARMOR, 120));
-        list.add(new Entry(RaffleEffectId.EMBER_WARD, PotionEffectType.FIRE_RESISTANCE, SlotRule.ANY_ARMOR, 120));
-
-        // Examples for later (do NOT enable until you want them):
-        // list.add(new Entry(RaffleEffectId.SEA_LUNG, PotionEffectType.WATER_BREATHING, SlotRule.HELMET_ONLY, 120));
-        // list.add(new Entry(RaffleEffectId.SIGHTBEYOND, PotionEffectType.NIGHT_VISION, SlotRule.HELMET_ONLY, 350));
-
-        ENTRIES = Collections.unmodifiableList(list);
-    }
-
-    public static List<Entry> entries() {
-        return ENTRIES;
     }
 }
