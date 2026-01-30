@@ -4,6 +4,8 @@ import com.orangeslices.bossencounters.raffle.effects.RaffleEffectReader;
 import org.bukkit.ChatColor;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
+import org.bukkit.persistence.PersistentDataContainer;
+import org.bukkit.persistence.PersistentDataType;
 
 import java.util.*;
 
@@ -20,7 +22,7 @@ public final class RaffleLoreUtil {
 
     /**
      * Backwards-compat: older code calls updateLore().
-     * Keep this so we don't have to touch the listener.
+     * Keep this so we don't have to touch listeners.
      */
     public static void updateLore(ItemStack armor, int maxSlots) {
         applyLore(armor, maxSlots);
@@ -34,9 +36,17 @@ public final class RaffleLoreUtil {
 
         Map<RaffleEffectId, Integer> effects = RaffleEffectReader.readFromItem(armor);
 
-        List<String> lore = new ArrayList<>();
+        // ✅ FIX: slots used should come from SLOT_COUNT (token applications),
+        // not effects.size() (unique effects).
+        PersistentDataContainer pdc = meta.getPersistentDataContainer();
+        Integer storedSlots = pdc.get(RaffleKeys.SLOT_COUNT, PersistentDataType.INTEGER);
+        int usedSlots = (storedSlots != null ? storedSlots : effects.size());
 
-        int usedSlots = effects.size();
+        // Clamp safety (just in case old items got weird)
+        if (usedSlots < effects.size()) usedSlots = effects.size();
+        if (maxSlots < 0) maxSlots = 0;
+
+        List<String> lore = new ArrayList<>();
         lore.add(color("&8\u25A0 &7Add-On Slots: &f" + usedSlots + "&7/&f" + maxSlots));
 
         if (effects.isEmpty()) {
@@ -96,6 +106,9 @@ public final class RaffleLoreUtil {
             case VILLAGER_FAVOR -> "Villager's Favor";
 
             case TERROR -> "Terror";
+
+            // If you still have these enums hanging around, keep them mapped.
+            // If you remove them later, remove these cases too.
             case DREAD -> "Dread";
             case MISSTEP -> "Misstep";
         };
