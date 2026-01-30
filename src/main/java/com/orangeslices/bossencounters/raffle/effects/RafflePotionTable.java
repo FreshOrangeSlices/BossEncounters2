@@ -94,7 +94,7 @@ public final class RafflePotionTable {
         list.add(new Entry(
                 RaffleEffectId.EMBER_WARD,
                 PotionEffectType.FIRE_RESISTANCE,
-                SlotRule.ANY_ARMOR,
+                SlotRule.CHESTPLATE_ONLY,
                 120,
                 false
         ));
