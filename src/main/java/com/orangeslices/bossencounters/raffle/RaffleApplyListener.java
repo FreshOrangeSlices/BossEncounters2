@@ -1,5 +1,7 @@
 package com.orangeslices.bossencounters.raffle;
 
+import com.orangeslices.bossencounters.raffle.effects.RafflePotionTable;
+import org.bukkit.inventory.EquipmentSlot;
 import com.orangeslices.bossencounters.BossEncountersPlugin;
 import org.bukkit.ChatColor;
 import org.bukkit.Material;
@@ -251,5 +253,33 @@ public final class RaffleApplyListener implements Listener {
     private String color(String s) {
         if (s == null) return "";
         return ChatColor.translateAlternateColorCodes('&', s);
+        private EquipmentSlot armorSlot(ItemStack armor) {
+    if (armor == null || armor.getType() == null) return null;
+
+    String t = armor.getType().name();
+    if (t.endsWith("_HELMET")) return EquipmentSlot.HEAD;
+    if (t.endsWith("_CHESTPLATE")) return EquipmentSlot.CHEST;
+    if (t.endsWith("_LEGGINGS")) return EquipmentSlot.LEGS;
+    if (t.endsWith("_BOOTS")) return EquipmentSlot.FEET;
+
+    return null;
+}
+
+private boolean isEffectCompatibleWithSlot(RaffleEffectId id, EquipmentSlot slot) {
+    if (id == null || slot == null) return false;
+
+    // If it's NOT a potion-table effect (ex: custom curse), allow it on any armor
+    RafflePotionTable.Entry entry = null;
+    for (RafflePotionTable.Entry e : RafflePotionTable.entries()) {
+        if (e.id == id) { entry = e; break; }
     }
+    if (entry == null) return true;
+
+    return switch (entry.slotRule) {
+        case ANY_ARMOR -> true;
+        case HELMET_ONLY -> slot == EquipmentSlot.HEAD;
+        case CHESTPLATE_ONLY -> slot == EquipmentSlot.CHEST;
+        case LEGGINGS_ONLY -> slot == EquipmentSlot.LEGS;
+        case BOOTS_ONLY -> slot == EquipmentSlot.FEET;
+    };
 }
