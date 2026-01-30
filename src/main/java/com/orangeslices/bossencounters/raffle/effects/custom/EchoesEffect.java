@@ -47,7 +47,7 @@ public final class EchoesEffect implements RaffleCustomEffect {
             loc.add(rng.nextInt(11) - 5, 0, rng.nextInt(11) - 5);
 
             Sound s = switch (rng.nextInt(5)) {
-                case 0 -> Sound.ENTITY_CAVE_SPIDER_AMBIENT;
+                case 0 -> Sound.ENTITY_SPIDER_AMBIENT;
                 case 1 -> Sound.ENTITY_ZOMBIE_AMBIENT;
                 case 2 -> Sound.ENTITY_ENDERMAN_STARE;
                 case 3 -> Sound.ENTITY_SKELETON_AMBIENT;
