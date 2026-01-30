@@ -35,6 +35,9 @@ public final class RaffleCustomEffectEngine {
 
     private void registerDefaults() {
         register(new TerrorEffect());
+        register(new DreadEffect());
+        register(new MisstepEffect());
+        register(new ReductionEffect()); 
         // future: register(new MisstepEffect());
         // future: register(new DreadEffect());
     }
