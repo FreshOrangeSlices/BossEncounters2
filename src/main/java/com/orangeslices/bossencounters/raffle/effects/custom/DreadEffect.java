@@ -16,10 +16,6 @@ import java.util.concurrent.ConcurrentHashMap;
  * Design intent:
  * - psychological "oh no" moment
  * - short, non-lethal disorientation
- *
- * Implementation:
- * - brief Nausea + Blindness + slowed reaction
- * - subtle horror sound cue (no spam)
  */
 public final class DreadEffect implements RaffleCustomEffect {
 
@@ -37,17 +33,15 @@ public final class DreadEffect implements RaffleCustomEffect {
     public void apply(Player player, int level) {
         if (player == null || !player.isOnline()) return;
 
-        // "felt not read" - keep visuals low
-        player.addPotionEffect(new PotionEffect(PotionEffectType.CONFUSION, DURATION_TICKS, 0, true, false, false));
+        // Use modern effect names (Paper 1.20+)
+        player.addPotionEffect(new PotionEffect(PotionEffectType.NAUSEA, DURATION_TICKS, 0, true, false, false));
         player.addPotionEffect(new PotionEffect(PotionEffectType.BLINDNESS, 20 * 3, 0, true, false, false));
-        player.addPotionEffect(new PotionEffect(PotionEffectType.SLOW, 20 * 6, 0, true, false, false));
+        player.addPotionEffect(new PotionEffect(PotionEffectType.SLOWNESS, 20 * 6, 0, true, false, false));
 
         long now = System.currentTimeMillis();
         long last = lastSoundAt.getOrDefault(player.getUniqueId(), 0L);
         if (now - last >= SOUND_COOLDOWN_MS) {
             lastSoundAt.put(player.getUniqueId(), now);
-
-            // choose something eerie but not ear-destroying
             player.playSound(player.getLocation(), Sound.ENTITY_ENDERMAN_STARE, 0.6f, 0.6f);
         }
     }
@@ -56,10 +50,9 @@ public final class DreadEffect implements RaffleCustomEffect {
     public void clear(Player player) {
         if (player == null) return;
 
-        // Remove only what we applied (safe; won’t strip external longer effects typically used)
-        player.removePotionEffect(PotionEffectType.CONFUSION);
+        player.removePotionEffect(PotionEffectType.NAUSEA);
         player.removePotionEffect(PotionEffectType.BLINDNESS);
-        player.removePotionEffect(PotionEffectType.SLOW);
+        player.removePotionEffect(PotionEffectType.SLOWNESS);
 
         lastSoundAt.remove(player.getUniqueId());
     }
