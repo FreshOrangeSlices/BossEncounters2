@@ -42,9 +42,9 @@ public enum RaffleEffectId {
     ON_ALL_FOURS(true, false),
     MATADOR(true, false),
     MOTHER_HEN(true, false),
-    IMPOSTER(true, false);
+    IMPOSTER(true, false),
     STALKER(true, false),
-    REDUCTION(true, false),
+    REDUCTION(true, false);
 
     private final boolean curse;
     private final boolean canLevel;
