@@ -28,12 +28,12 @@ public final class RaffleEffectReader {
     public static Map<RaffleEffectId, Integer> readFromItem(ItemStack item) {
         Map<RaffleEffectId, Integer> map = new EnumMap<>(RaffleEffectId.class);
         if (item == null) return map;
-
         if (item.getItemMeta() == null) return map;
 
         PersistentDataContainer pdc = item.getItemMeta().getPersistentDataContainer();
 
-        String raw = pdc.get(RaffleKeys.RAFFLE_EFFECTS, PersistentDataType.STRING);
+        // NOTE: key name is RaffleKeys.EFFECTS (not RAFFLE_EFFECTS)
+        String raw = pdc.get(RaffleKeys.EFFECTS, PersistentDataType.STRING);
         if (raw == null || raw.isBlank()) return map;
 
         String[] parts = raw.split(",");
@@ -53,12 +53,11 @@ public final class RaffleEffectReader {
 
             if (level <= 0) continue;
 
-            // ---- Clamp non-leveling effects ----
+            // Clamp non-leveling effects
             if (!id.canLevel()) {
                 level = 1;
             }
 
-            // highest wins
             map.merge(id, level, Math::max);
         }
 
@@ -79,7 +78,6 @@ public final class RaffleEffectReader {
             int level = e.getValue();
             if (level <= 0) continue;
 
-            // clamp again for safety
             if (!id.canLevel()) {
                 level = 1;
             }
