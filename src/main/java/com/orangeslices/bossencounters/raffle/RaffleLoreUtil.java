@@ -18,6 +18,14 @@ public final class RaffleLoreUtil {
 
     private RaffleLoreUtil() {}
 
+    /**
+     * Backwards-compat: older code calls updateLore().
+     * Keep this so we don't have to touch the listener.
+     */
+    public static void updateLore(ItemStack armor, int maxSlots) {
+        applyLore(armor, maxSlots);
+    }
+
     public static void applyLore(ItemStack armor, int maxSlots) {
         if (armor == null) return;
 
@@ -58,7 +66,7 @@ public final class RaffleLoreUtil {
                 } else {
                     // Good: show level only if it can level
                     if (id.canLevel()) {
-                        line = "&8\u25A0 &d" + name + " &7(I" + roman(Math.max(1, level)) + ")";
+                        line = "&8\u25A0 &d" + name + " &7(" + roman(Math.max(1, level)) + ")";
                     } else {
                         line = "&8\u25A0 &d" + name;
                     }
@@ -68,7 +76,6 @@ public final class RaffleLoreUtil {
             }
         }
 
-        // Add a subtle footer line (optional flavor)
         lore.add(color("&8\u25A0 &8&o\"The armor remembers...\""));
 
         meta.setLore(lore);
@@ -76,7 +83,6 @@ public final class RaffleLoreUtil {
     }
 
     private static String displayName(RaffleEffectId id) {
-        // Thematic names only — never mechanical names.
         return switch (id) {
             case VITALITY -> "Vitality";
             case IRON_WILL -> "Iron Will";
@@ -96,7 +102,6 @@ public final class RaffleLoreUtil {
     }
 
     private static String roman(int n) {
-        // Small set only (we don't expect huge levels)
         return switch (n) {
             case 1 -> "I";
             case 2 -> "II";
