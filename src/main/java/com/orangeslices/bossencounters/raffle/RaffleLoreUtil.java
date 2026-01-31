@@ -1,71 +1,124 @@
 package com.orangeslices.bossencounters.raffle;
 
 import com.orangeslices.bossencounters.raffle.effects.RaffleEffectReader;
+import org.bukkit.ChatColor;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
+import org.bukkit.persistence.PersistentDataContainer;
+import org.bukkit.persistence.PersistentDataType;
 
 import java.util.*;
-import java.util.stream.Collectors;
 
+/**
+ * Builds lore for raffle armor based on PDC.
+ *
+ * TEMP TESTING NOTE:
+ * - We ARE showing curses in lore right now so you can test.
+ * - Later we can hide curses again if you want.
+ */
 public final class RaffleLoreUtil {
 
     private RaffleLoreUtil() {}
 
     /**
-     * TEMP TESTING MODE:
-     * - Shows GOOD effects AND CURSES in lore so you can verify what's on the item.
-     * - Later we can hide curses again once testing is done.
+     * Backwards-compat: older code calls updateLore().
+     * Keep this so we don't have to touch listeners.
      */
-    public static void updateLore(ItemStack item, int slotsUsed) {
-        if (item == null) return;
+    public static void updateLore(ItemStack armor, int maxSlots) {
+        applyLore(armor, maxSlots);
+    }
 
-        ItemMeta meta = item.getItemMeta();
+    public static void applyLore(ItemStack armor, int maxSlots) {
+        if (armor == null) return;
+
+        ItemMeta meta = armor.getItemMeta();
         if (meta == null) return;
 
-        Map<RaffleEffectId, Integer> effects = RaffleEffectReader.readFromItem(item);
+        Map<RaffleEffectId, Integer> effects = RaffleEffectReader.readFromItem(armor);
+
+        // Slots used comes from SLOT_COUNT (token applications), not effects.size()
+        PersistentDataContainer pdc = meta.getPersistentDataContainer();
+        Integer storedSlots = pdc.get(RaffleKeys.SLOT_COUNT, PersistentDataType.INTEGER);
+        int usedSlots = (storedSlots != null ? storedSlots : effects.size());
+
+        // Clamp safety (just in case old items got weird)
+        if (usedSlots < effects.size()) usedSlots = effects.size();
+        if (maxSlots < 0) maxSlots = 0;
 
         List<String> lore = new ArrayList<>();
-        lore.add("§7Raffle Slots: §f" + slotsUsed + "§7/§f" + slotsUsed); // keeps your “slots used” visible
+        lore.add(color("&8\u25A0 &7Add-On Slots: &f" + usedSlots + "&7/&f" + maxSlots));
 
         if (effects.isEmpty()) {
-            lore.add("§8No effects.");
-            meta.setLore(lore);
-            item.setItemMeta(meta);
-            return;
-        }
+            lore.add(color("&8\u25A0 &7No lingering influence."));
+        } else {
+            lore.add(color("&8\u25A0 &7Imprinted Effects:"));
 
-        // Sort: GOOD first, then CURSES, alphabetical inside each
-        List<Map.Entry<RaffleEffectId, Integer>> sorted = effects.entrySet().stream()
-                .filter(e -> e.getKey() != null)
-                .sorted(Comparator
-                        .comparing((Map.Entry<RaffleEffectId, Integer> e) -> e.getKey().isCurse())
-                        .thenComparing(e -> e.getKey().name()))
-                .collect(Collectors.toList());
+            // Sort: GOOD first then CURSE, then stable by name
+            List<Map.Entry<RaffleEffectId, Integer>> sorted = new ArrayList<>(effects.entrySet());
+            sorted.sort((a, b) -> {
+                boolean ac = a.getKey().isCurse();
+                boolean bc = b.getKey().isCurse();
+                if (ac != bc) return ac ? 1 : -1; // curses last
+                return a.getKey().name().compareTo(b.getKey().name());
+            });
 
-        lore.add("§7Effects:");
+            for (Map.Entry<RaffleEffectId, Integer> e : sorted) {
+                RaffleEffectId id = e.getKey();
+                int level = e.getValue();
 
-        for (Map.Entry<RaffleEffectId, Integer> e : sorted) {
-            RaffleEffectId id = e.getKey();
-            int level = Math.max(1, e.getValue());
+                String name = displayName(id);
+                String line;
 
-            String name = titleCase(id.name());
-
-            if (id.isCurse()) {
-                // CURSE line (red)
-                lore.add("§c✖ " + name);
-            } else {
-                // GOOD line (green)
-                // Only show level if it can level; otherwise keep it clean
-                if (id.canLevel()) {
-                    lore.add("§a✔ " + name + " §7" + toRoman(level));
+                if (id.isCurse()) {
+                    // Curse: no levels shown (but visible for testing)
+                    line = "&8\u25A0 &5" + name;
                 } else {
-                    lore.add("§a✔ " + name);
+                    // Good: show level only if it can level
+                    if (id.canLevel()) {
+                        line = "&8\u25A0 &d" + name + " &7(" + roman(Math.max(1, level)) + ")";
+                    } else {
+                        line = "&8\u25A0 &d" + name;
+                    }
                 }
+
+                lore.add(color(line));
             }
         }
 
+        lore.add(color("&8\u25A0 &8&o\"The armor remembers...\""));
+
         meta.setLore(lore);
-        item.setItemMeta(meta);
+        armor.setItemMeta(meta);
+    }
+
+    /**
+     * IMPORTANT:
+     * - Keep explicit names for the ones you care about.
+     * - Use default fallback so new IDs don't break compilation.
+     */
+    private static String displayName(RaffleEffectId id) {
+        return switch (id) {
+            // GOOD (levelable)
+            case VITALITY -> "Vitality";
+            case IRON_WILL -> "Iron Will";
+            case BLOOD_MENDING -> "Blood Mending";
+            case SKYBOUND -> "Skybound";
+
+            // GOOD (flat)
+            case EMBER_WARD -> "Ember Ward";
+            case FORTUNE -> "Fortune";
+            case TIDEBOUND -> "Tidebound";
+            case OCEAN_GRACE -> "Ocean Grace";
+            case VILLAGER_FAVOR -> "Villager's Favor";
+
+            // CURSES (known)
+            case TERROR -> "Terror";
+            case DREAD -> "Dread";
+            case MISSTEP -> "Misstep";
+
+            // NEW IDs (and anything future) safely fall back
+            default -> titleCase(id.name());
+        };
     }
 
     private static String titleCase(String raw) {
@@ -80,15 +133,23 @@ public final class RaffleLoreUtil {
         return sb.toString();
     }
 
-    private static String toRoman(int n) {
-        // Small range is all we need
+    private static String roman(int n) {
         return switch (n) {
             case 1 -> "I";
             case 2 -> "II";
             case 3 -> "III";
             case 4 -> "IV";
             case 5 -> "V";
+            case 6 -> "VI";
+            case 7 -> "VII";
+            case 8 -> "VIII";
+            case 9 -> "IX";
+            case 10 -> "X";
             default -> String.valueOf(n);
         };
+    }
+
+    private static String color(String s) {
+        return ChatColor.translateAlternateColorCodes('&', s);
     }
 }
