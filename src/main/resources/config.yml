@@ -186,5 +186,13 @@ raffle:
     - VILLAGER_FAVOR    # Hero of the Village (any)
 
     # ===== CURSES =====
-    - TERROR            # Darkness + Warden Roar
-    # - UNEASE           # (planned) Nausea on equip
+    - TERROR
+    - DREAD
+    - MISSTEP
+    - UNEASE
+    - ECHOES
+    - DISARRAY
+    - ON_ALL_FOURS
+    - MATADOR
+    - MOTHER_HEN
+    - REDUCTION
