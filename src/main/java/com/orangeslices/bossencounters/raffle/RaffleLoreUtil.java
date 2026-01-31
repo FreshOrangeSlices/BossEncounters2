@@ -1,5 +1,6 @@
 package com.orangeslices.bossencounters.raffle;
 
+import com.orangeslices.bossencounters.raffle.effects.RaffleEffectReader;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
 
@@ -9,14 +10,8 @@ import java.util.Map;
 
 public final class RaffleLoreUtil {
 
-    private RaffleLoreUtil() {
-        // utility
-    }
+    private RaffleLoreUtil() {}
 
-    /**
-     * Updates lore after a raffle application.
-     * Called by RaffleApplyListener.
-     */
     public static void updateLore(ItemStack item, int slotsUsed) {
         if (item == null) return;
 
@@ -29,8 +24,7 @@ public final class RaffleLoreUtil {
         lore.add("§7Raffle Slots: §f" + slotsUsed);
 
         // Effect presence (vague, hides curses by design)
-        Map<RaffleEffectId, Integer> effects =
-                raffle.effects.RaffleEffectReader.readFromItem(item);
+        Map<RaffleEffectId, Integer> effects = RaffleEffectReader.readFromItem(item);
 
         boolean hasGoodEffects = effects.keySet().stream()
                 .anyMatch(id -> id != null && id.isGood());
@@ -43,9 +37,6 @@ public final class RaffleLoreUtil {
         item.setItemMeta(meta);
     }
 
-    /**
-     * Display name helper (used elsewhere if needed).
-     */
     public static String displayName(RaffleEffectId id) {
         if (id == null) return "Unknown";
         return titleCase(id.name());
