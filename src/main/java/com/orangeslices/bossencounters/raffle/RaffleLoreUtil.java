@@ -1,33 +1,54 @@
 package com.orangeslices.bossencounters.raffle;
 
+import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.meta.ItemMeta;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+
 public final class RaffleLoreUtil {
 
     private RaffleLoreUtil() {
-        // utility class
+        // utility
     }
 
+    /**
+     * Updates lore after a raffle application.
+     * Called by RaffleApplyListener.
+     */
+    public static void updateLore(ItemStack item, int slotsUsed) {
+        if (item == null) return;
+
+        ItemMeta meta = item.getItemMeta();
+        if (meta == null) return;
+
+        List<String> lore = new ArrayList<>();
+
+        // Slot usage line (authoritative)
+        lore.add("§7Raffle Slots: §f" + slotsUsed);
+
+        // Effect presence (vague, hides curses by design)
+        Map<RaffleEffectId, Integer> effects =
+                raffle.effects.RaffleEffectReader.readFromItem(item);
+
+        boolean hasGoodEffects = effects.keySet().stream()
+                .anyMatch(id -> id != null && id.isGood());
+
+        if (hasGoodEffects) {
+            lore.add("§7Infused with mysterious power");
+        }
+
+        meta.setLore(lore);
+        item.setItemMeta(meta);
+    }
+
+    /**
+     * Display name helper (used elsewhere if needed).
+     */
     public static String displayName(RaffleEffectId id) {
         if (id == null) return "Unknown";
-
-        return switch (id) {
-            case VITALITY -> "Vitality";
-            case IRON_WILL -> "Iron Will";
-            case BLOOD_MENDING -> "Blood Mending";
-            case SKYBOUND -> "Skybound";
-
-            case EMBER_WARD -> "Ember Ward";
-            case FORTUNE -> "Fortune";
-            case TIDEBOUND -> "Tidebound";
-            case OCEAN_GRACE -> "Ocean Grace";
-            case VILLAGER_FAVOR -> "Villager's Favor";
-
-            case TERROR -> "Terror";
-            case DREAD -> "Dread";
-            case MISSTEP -> "Misstep";
-
-            // We are intentionally NOT surfacing most curses yet
-            default -> titleCase(id.name());
-        };
+        return titleCase(id.name());
     }
 
     private static String titleCase(String raw) {
