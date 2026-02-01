@@ -11,7 +11,7 @@ import java.util.UUID;
 
 public final class ReductionEffect implements RaffleCustomEffect {
 
-    private static final double REDUCED_SCALE = 0.60;
+    private static final double REDUCED_SCALE = 0.55;
 
     private final Map<UUID, Double> originalScale = new HashMap<>();
 
