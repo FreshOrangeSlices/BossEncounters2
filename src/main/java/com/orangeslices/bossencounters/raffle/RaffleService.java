@@ -43,7 +43,7 @@ public final class RaffleService {
             return ApplyResult.fail("Item is not armor.");
         }
 
-        // Defensive init check (will throw if not initialized)
+        // Defensive init check
         RaffleKeys.validateInit();
 
         if (maxSlots <= 0) maxSlots = DEFAULT_MAX_SLOTS;
@@ -62,65 +62,37 @@ public final class RaffleService {
 
         Map<RaffleEffectId, Integer> effects = readEffects(pdc);
         int slotsUsed = readSlotsUsed(pdc, effects.size());
-
         boolean hasCurse = hasCurse(effects);
 
-        RaffleDebug.log("---- Raffle Apply Start ----");
-        RaffleDebug.log("Item=" + armor.getType().name()
-                + " slot=" + targetSlot.name()
-                + " slotsUsed=" + slotsUsed + "/" + maxSlots
-                + " effects=" + effectsToDebugString(effects)
-                + " hasCurse=" + hasCurse);
-
         if (slotsUsed >= maxSlots) {
-            RaffleDebug.log("FAIL: max slots reached.");
             return ApplyResult.fail("Max add-ons reached.");
         }
 
         if (pool.isEmpty()) {
-            RaffleDebug.log("FAIL: pool is empty (check config raffle.effects).");
             return ApplyResult.fail("Raffle pool is empty.");
         }
 
         RaffleEffectId rolled = rollForSlot(hasCurse, targetSlot);
         if (rolled == null) {
-            RaffleDebug.log("FAIL: no valid roll for slot=" + targetSlot.name()
-                    + " (likely misconfigured pool / curse-locked with no valid GOOD effects).");
             return ApplyResult.fail("No valid effects to roll for this armor slot.");
         }
 
         int newLevel;
 
         if (rolled.isCurse()) {
-            // Should only happen if hasCurse == false, but keep it safe
-            if (hasCurse) {
-                RaffleDebug.log("FAIL: attempted to roll CURSE while curse-locked (guard).");
-                return ApplyResult.fail("Armor is curse-locked (no more curses).");
-            }
             effects.put(rolled, 1);
             newLevel = 1;
-
         } else {
-            // GOOD effects:
-            // - If it can't level => always 1
-            // - If it can level => increment
             if (!rolled.canLevel()) {
                 boolean alreadyHas = effects.containsKey(rolled);
                 effects.put(rolled, 1);
                 newLevel = 1;
 
-                // OPTIONAL UX improvement:
-                // If you roll a non-leveling effect you already have, don't consume a slot.
-                // Comment this block out if you want EVERY roll to consume a slot no matter what.
                 if (alreadyHas) {
                     writeEffects(pdc, effects);
                     armor.setItemMeta(meta);
-
-                    RaffleDebug.log("ROLLED: " + rolled.name() + " type=GOOD (non-leveling, already owned) -> no slot consumed");
-                    RaffleDebug.log("---- Raffle Apply End ----");
                     return ApplyResult.success(rolled, newLevel, slotsUsed, maxSlots);
                 }
-
             } else {
                 int current = effects.getOrDefault(rolled, 0);
                 newLevel = current + 1;
@@ -128,29 +100,17 @@ public final class RaffleService {
             }
         }
 
-        // Consumes 1 slot every time (except optional block above)
-        int beforeSlots = slotsUsed;
         slotsUsed++;
 
         writeEffects(pdc, effects);
         pdc.set(RaffleKeys.SLOT_COUNT, PersistentDataType.INTEGER, slotsUsed);
-
         armor.setItemMeta(meta);
-
-        RaffleDebug.log("ROLLED: " + rolled.name()
-                + " type=" + (rolled.isCurse() ? "CURSE" : "GOOD")
-                + " resultLevel=" + newLevel
-                + " slots " + beforeSlots + "->" + slotsUsed
-                + " effectsNow=" + effectsToDebugString(effects));
-        RaffleDebug.log("---- Raffle Apply End ----");
 
         return ApplyResult.success(rolled, newLevel, slotsUsed, maxSlots);
     }
 
     /**
-     * Slot-authoritative roll:
-     * - If curse-locked => only GOOD effects compatible with this slot
-     * - If not curse-locked => GOOD effects compatible with slot + (any curses)
+     * Slot-authoritative roll with BENCHED curse filtering.
      */
     private RaffleEffectId rollForSlot(boolean hasCurse, EquipmentSlot targetSlot) {
         List<RaffleEffectId> candidates = new ArrayList<>();
@@ -158,9 +118,12 @@ public final class RaffleService {
         for (RaffleEffectId id : pool.snapshot()) {
             if (id == null) continue;
 
-            if (hasCurse && id.isCurse()) {
+            // BENCHED CURSES
+            if (id == RaffleEffectId.UNEASE || id == RaffleEffectId.MISSTEP) {
                 continue;
             }
+
+            if (hasCurse && id.isCurse()) continue;
 
             if (id.isCurse()) {
                 candidates.add(id);
@@ -173,32 +136,24 @@ public final class RaffleService {
         }
 
         if (candidates.isEmpty()) return null;
-
-        RaffleEffectId pick = candidates.get(RNG.nextInt(candidates.size()));
-        RaffleDebug.log("ROLL MODE: slot=" + targetSlot.name()
-                + (hasCurse ? " GOOD-only" : " slot-filtered")
-                + " -> " + pick.name());
-        return pick;
+        return candidates.get(RNG.nextInt(candidates.size()));
     }
 
     private boolean isGoodEffectCompatibleWithSlot(RaffleEffectId id, EquipmentSlot slot) {
         if (id == null || slot == null) return false;
 
-        RafflePotionTable.Entry entry = null;
         for (RafflePotionTable.Entry e : RafflePotionTable.entries()) {
-            if (e.id == id) { entry = e; break; }
+            if (e.id == id) {
+                return switch (e.slotRule) {
+                    case ANY_ARMOR -> true;
+                    case HELMET_ONLY -> slot == EquipmentSlot.HEAD;
+                    case CHESTPLATE_ONLY -> slot == EquipmentSlot.CHEST;
+                    case LEGGINGS_ONLY -> slot == EquipmentSlot.LEGS;
+                    case BOOTS_ONLY -> slot == EquipmentSlot.FEET;
+                };
+            }
         }
-
-        // Not in potion table => allow anywhere (future custom good effects)
-        if (entry == null) return true;
-
-        return switch (entry.slotRule) {
-            case ANY_ARMOR -> true;
-            case HELMET_ONLY -> slot == EquipmentSlot.HEAD;
-            case CHESTPLATE_ONLY -> slot == EquipmentSlot.CHEST;
-            case LEGGINGS_ONLY -> slot == EquipmentSlot.LEGS;
-            case BOOTS_ONLY -> slot == EquipmentSlot.FEET;
-        };
+        return true;
     }
 
     private static EquipmentSlot armorSlot(Material mat) {
@@ -223,39 +178,25 @@ public final class RaffleService {
         return stored != null ? stored : fallback;
     }
 
-    /**
-     * Stored format: "ID:level,ID:level"
-     */
     private static Map<RaffleEffectId, Integer> readEffects(PersistentDataContainer pdc) {
         String raw = pdc.get(RaffleKeys.EFFECTS, PersistentDataType.STRING);
         Map<RaffleEffectId, Integer> out = new LinkedHashMap<>();
-
         if (raw == null || raw.isBlank()) return out;
 
         for (String part : raw.split(",")) {
-            String token = part.trim();
-            if (token.isEmpty()) continue;
-
-            String[] kv = token.split(":");
+            String[] kv = part.trim().split(":");
             if (kv.length != 2) continue;
 
-            RaffleEffectId id = RaffleEffectId.fromString(kv[0].trim());
+            RaffleEffectId id = RaffleEffectId.fromString(kv[0]);
             if (id == null) continue;
 
             int lvl;
-            try {
-                lvl = Integer.parseInt(kv[1].trim());
-            } catch (NumberFormatException e) {
-                lvl = 1;
-            }
+            try { lvl = Integer.parseInt(kv[1]); }
+            catch (NumberFormatException e) { lvl = 1; }
 
-            if (id.isCurse()) lvl = 1;
-            if (!id.canLevel()) lvl = 1;
-            if (lvl < 1) lvl = 1;
-
-            out.put(id, lvl);
+            if (id.isCurse() || !id.canLevel()) lvl = 1;
+            out.put(id, Math.max(1, lvl));
         }
-
         return out;
     }
 
@@ -267,20 +208,11 @@ public final class RaffleService {
 
         StringBuilder sb = new StringBuilder();
         boolean first = true;
-
         for (Map.Entry<RaffleEffectId, Integer> e : effects.entrySet()) {
-            if (e.getKey() == null) continue;
-
-            int lvl = (e.getValue() == null ? 1 : e.getValue());
-            if (e.getKey().isCurse()) lvl = 1;
-            if (!e.getKey().canLevel()) lvl = 1;
-            if (lvl < 1) lvl = 1;
-
             if (!first) sb.append(",");
-            sb.append(e.getKey().name()).append(":").append(lvl);
+            sb.append(e.getKey().name()).append(":").append(Math.max(1, e.getValue()));
             first = false;
         }
-
         pdc.set(RaffleKeys.EFFECTS, PersistentDataType.STRING, sb.toString());
     }
 
@@ -292,21 +224,6 @@ public final class RaffleService {
                 || n.endsWith("_LEGGINGS")
                 || n.endsWith("_BOOTS");
     }
-
-    private static String effectsToDebugString(Map<RaffleEffectId, Integer> effects) {
-        if (effects == null || effects.isEmpty()) return "{}";
-        StringBuilder sb = new StringBuilder("{");
-        boolean first = true;
-        for (Map.Entry<RaffleEffectId, Integer> e : effects.entrySet()) {
-            if (!first) sb.append(", ");
-            sb.append(e.getKey().name()).append(":").append(e.getValue());
-            first = false;
-        }
-        sb.append("}");
-        return sb.toString();
-    }
-
-    // ---------------- result ----------------
 
     public static final class ApplyResult {
         public final boolean success;
