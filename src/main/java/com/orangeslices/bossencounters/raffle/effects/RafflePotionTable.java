@@ -50,7 +50,7 @@ public final class RafflePotionTable {
         // GOOD (levelable)
         // -------------------------
 
-        // VITALITY is the ONLY "ANY_ARMOR" effect now (your new rule).
+        // VITALITY is the ONLY "ANY_ARMOR" effect
         list.add(new Entry(
                 RaffleEffectId.VITALITY,
                 PotionEffectType.HEALTH_BOOST,
@@ -95,7 +95,6 @@ public final class RafflePotionTable {
                 false
         ));
 
-        // Fortune -> LEGGINGS ONLY (slot-locked per your rule)
         list.add(new Entry(
                 RaffleEffectId.FORTUNE,
                 PotionEffectType.LUCK,
@@ -120,12 +119,20 @@ public final class RafflePotionTable {
                 false
         ));
 
-        // Villager Favor -> CHESTPLATE ONLY (slot-locked per your rule)
         list.add(new Entry(
                 RaffleEffectId.VILLAGER_FAVOR,
                 PotionEffectType.HERO_OF_THE_VILLAGE,
                 SlotRule.CHESTPLATE_ONLY,
                 200,
+                false
+        ));
+
+        // ⭐ NEW: Night Vision (Helmet-only)
+        list.add(new Entry(
+                RaffleEffectId.SIGHTBEYOND,
+                PotionEffectType.NIGHT_VISION,
+                SlotRule.HELMET_ONLY,
+                400,
                 false
         ));
 
