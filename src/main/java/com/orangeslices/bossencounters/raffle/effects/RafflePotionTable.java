@@ -42,12 +42,15 @@ public final class RafflePotionTable {
     }
 
     private static final List<Entry> ENTRIES;
+
     static {
         List<Entry> list = new ArrayList<>();
 
         // -------------------------
         // GOOD (levelable)
         // -------------------------
+
+        // VITALITY is the ONLY "ANY_ARMOR" effect now (your new rule).
         list.add(new Entry(
                 RaffleEffectId.VITALITY,
                 PotionEffectType.HEALTH_BOOST,
@@ -83,18 +86,20 @@ public final class RafflePotionTable {
         // -------------------------
         // GOOD (flat / non-leveling)
         // -------------------------
+
         list.add(new Entry(
                 RaffleEffectId.EMBER_WARD,
                 PotionEffectType.FIRE_RESISTANCE,
-                SlotRule.CHESTPLATE_ONLY, // <-- UPDATED
+                SlotRule.CHESTPLATE_ONLY,
                 120,
                 false
         ));
 
+        // Fortune -> LEGGINGS ONLY (slot-locked per your rule)
         list.add(new Entry(
                 RaffleEffectId.FORTUNE,
                 PotionEffectType.LUCK,
-                SlotRule.ANY_ARMOR,
+                SlotRule.LEGGINGS_ONLY,
                 200,
                 false
         ));
@@ -115,10 +120,11 @@ public final class RafflePotionTable {
                 false
         ));
 
+        // Villager Favor -> CHESTPLATE ONLY (slot-locked per your rule)
         list.add(new Entry(
                 RaffleEffectId.VILLAGER_FAVOR,
                 PotionEffectType.HERO_OF_THE_VILLAGE,
-                SlotRule.ANY_ARMOR,
+                SlotRule.CHESTPLATE_ONLY,
                 200,
                 false
         ));
