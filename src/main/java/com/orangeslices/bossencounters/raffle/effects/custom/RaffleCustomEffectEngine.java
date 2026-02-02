@@ -4,6 +4,7 @@ import com.orangeslices.bossencounters.BossEncountersPlugin;
 import com.orangeslices.bossencounters.raffle.RaffleEffectId;
 import com.orangeslices.bossencounters.raffle.effects.RaffleEffectReader;
 import org.bukkit.entity.Player;
+import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.scheduler.BukkitTask;
 
@@ -16,6 +17,10 @@ import java.util.*;
  * - GOOD custom effects (future) may apply repeatedly if desired
  * - CURSES trigger ONCE when they become active
  * - clear() is called when the effect disappears
+ *
+ * DEFENSIVE GUARANTEE:
+ * - Even if a cursed item ends up on the wrong armor slot,
+ *   the curse will NOT trigger.
  */
 public final class RaffleCustomEffectEngine {
 
@@ -90,14 +95,13 @@ public final class RaffleCustomEffectEngine {
 
         UUID uuid = player.getUniqueId();
 
-        // 1) Read highest levels across armor
         Map<RaffleEffectId, Integer> highest = new HashMap<>();
-        mergeArmor(highest, player.getInventory().getHelmet());
-        mergeArmor(highest, player.getInventory().getChestplate());
-        mergeArmor(highest, player.getInventory().getLeggings());
-        mergeArmor(highest, player.getInventory().getBoots());
 
-        // 2) Determine which custom effects should be active now
+        mergeArmor(highest, player.getInventory().getHelmet(), EquipmentSlot.HEAD);
+        mergeArmor(highest, player.getInventory().getChestplate(), EquipmentSlot.CHEST);
+        mergeArmor(highest, player.getInventory().getLeggings(), EquipmentSlot.LEGS);
+        mergeArmor(highest, player.getInventory().getBoots(), EquipmentSlot.FEET);
+
         Set<RaffleEffectId> nowActive = new HashSet<>();
         for (Map.Entry<RaffleEffectId, Integer> e : highest.entrySet()) {
             RaffleEffectId id = e.getKey();
@@ -120,7 +124,6 @@ public final class RaffleCustomEffectEngine {
 
             int level = highest.getOrDefault(id, 1);
 
-            // CURSES trigger once
             effect.apply(player, level);
         }
 
@@ -137,9 +140,35 @@ public final class RaffleCustomEffectEngine {
         activeByPlayer.put(uuid, nowActive);
     }
 
-    private void mergeArmor(Map<RaffleEffectId, Integer> into, ItemStack armor) {
+    private void mergeArmor(Map<RaffleEffectId, Integer> into, ItemStack armor, EquipmentSlot slot) {
         if (armor == null) return;
+
         Map<RaffleEffectId, Integer> map = RaffleEffectReader.readFromItem(armor);
+
+        for (Iterator<Map.Entry<RaffleEffectId, Integer>> it = map.entrySet().iterator(); it.hasNext(); ) {
+            Map.Entry<RaffleEffectId, Integer> e = it.next();
+
+            if (e.getKey().isCurse() && !isCurseCompatibleWithSlot(e.getKey(), slot)) {
+                it.remove();
+            }
+        }
+
         RaffleEffectReader.mergeHighest(into, map);
+    }
+
+    /**
+     * Defensive curse slot rules.
+     * Must mirror RaffleService.
+     */
+    private boolean isCurseCompatibleWithSlot(RaffleEffectId id, EquipmentSlot slot) {
+        if (id == null || slot == null) return false;
+
+        return switch (id) {
+            case TERROR, REDUCTION -> slot == EquipmentSlot.HEAD;
+            case DREAD -> slot == EquipmentSlot.CHEST;
+            case MOTHER_HEN -> slot == EquipmentSlot.LEGS;
+            case MATADOR -> slot == EquipmentSlot.FEET;
+            default -> false;
+        };
     }
 }
