@@ -46,6 +46,7 @@ public final class RaffleCustomEffectEngine {
         // register(new MisstepEffect());
         // register(new UneaseEffect());
 
+        register(new GeckoGripEffect());
         register(new EchoesEffect());
         register(new DisarrayEffect());
         register(new OnAllFoursEffect());
