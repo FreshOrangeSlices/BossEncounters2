@@ -27,6 +27,7 @@ public enum RaffleEffectId {
     TIDEBOUND(false, false),      // Conduit Power (Helmet only)
     OCEAN_GRACE(false, false),    // Dolphin's Grace (Boots only)
     VILLAGER_FAVOR(false, false), // Hero of the Village
+    SIGHTBEYOND(false, false),    // Night Vision (Helmet only)
 
     // -------------------------
     // CURSES (non-leveling)
@@ -84,6 +85,9 @@ public enum RaffleEffectId {
         switch (key) {
             case "WARMTH" -> key = "EMBER_WARD";
             case "VIGOR" -> key = "VITALITY";
+
+            // If you ever rename SIGHTBEYOND later, keep an alias here.
+            case "NIGHT_VISION", "SIGHT_BEYOND", "SIGHT_BEYOND_" -> key = "SIGHTBEYOND";
 
             // Old saves used these names; now they exist as real curses.
             case "UNEASE" -> key = "UNEASE";
