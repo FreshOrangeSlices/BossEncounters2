@@ -29,6 +29,8 @@ public enum RaffleEffectId {
     VILLAGER_FAVOR(false, false), // Hero of the Village
     SIGHTBEYOND(false, false),    // Night Vision (Helmet only)
 
+    GECKO_GRIP(false, false),     // Wall Climb (Boots only)  ⭐ NEW
+
     // -------------------------
     // CURSES (non-leveling)
     // -------------------------
@@ -86,8 +88,11 @@ public enum RaffleEffectId {
             case "WARMTH" -> key = "EMBER_WARD";
             case "VIGOR" -> key = "VITALITY";
 
-            // If you ever rename SIGHTBEYOND later, keep an alias here.
+            // Night vision aliases (future-proof)
             case "NIGHT_VISION", "SIGHT_BEYOND", "SIGHT_BEYOND_" -> key = "SIGHTBEYOND";
+
+            // Wall climb aliases (future-proof)
+            case "WALL_CLIMB", "WALLCLIMB", "GECKO", "GECKO_GRIP" -> key = "GECKO_GRIP";
 
             // Old saves used these names; now they exist as real curses.
             case "UNEASE" -> key = "UNEASE";
