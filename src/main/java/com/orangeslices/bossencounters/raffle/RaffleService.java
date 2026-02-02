@@ -21,8 +21,9 @@ import java.util.*;
  * - Curses never level
  *
  * Slot Authority:
- * - When applying to a specific armor piece, ONLY roll GOOD effects compatible with that armor slot.
- * - Curses are allowed on any armor piece (slot-agnostic), unless you later decide otherwise.
+ * - When applying to a specific armor piece, ONLY roll effects compatible with that armor slot.
+ * - GOOD effects are slot-locked via RafflePotionTable.
+ * - CURSES are slot-locked here (roll-time) to prevent dead/incorrect curse rolls.
  */
 public final class RaffleService {
 
@@ -116,7 +117,7 @@ public final class RaffleService {
     }
 
     /**
-     * Slot-authoritative roll with BENCHED curse filtering.
+     * Slot-authoritative roll with BENCHED filtering + slot-locked curses.
      */
     private RaffleEffectId rollForSlot(boolean hasCurse, EquipmentSlot targetSlot) {
         List<RaffleEffectId> candidates = new ArrayList<>();
@@ -132,9 +133,11 @@ public final class RaffleService {
             // If this item already has a curse, only GOOD effects can roll.
             if (hasCurse && id.isCurse()) continue;
 
-            // Curses are currently allowed on ANY armor slot.
+            // CURSES are slot-locked (prevents dead/incorrect curse rolls)
             if (id.isCurse()) {
-                candidates.add(id);
+                if (isCurseCompatibleWithSlot(id, targetSlot)) {
+                    candidates.add(id);
+                }
                 continue;
             }
 
@@ -146,6 +149,27 @@ public final class RaffleService {
 
         if (candidates.isEmpty()) return null;
         return candidates.get(RNG.nextInt(candidates.size()));
+    }
+
+    /**
+     * Curse slot-lock rules (your mapping):
+     * - HELMET: TERROR, REDUCTION
+     * - CHESTPLATE: DREAD
+     * - LEGGINGS: MOTHER_HEN
+     * - BOOTS: MATADOR
+     *
+     * Default is FALSE so new curses must be explicitly mapped.
+     */
+    private boolean isCurseCompatibleWithSlot(RaffleEffectId id, EquipmentSlot slot) {
+        if (id == null || slot == null) return false;
+
+        return switch (id) {
+            case TERROR, REDUCTION -> slot == EquipmentSlot.HEAD;
+            case DREAD -> slot == EquipmentSlot.CHEST;
+            case MOTHER_HEN -> slot == EquipmentSlot.LEGS;
+            case MATADOR -> slot == EquipmentSlot.FEET;
+            default -> false;
+        };
     }
 
     /**
