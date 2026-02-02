@@ -13,7 +13,7 @@ import java.util.*;
 /**
  * Raffle rules:
  * - Armor only
- * - Max 3 slots
+ * - Max 3 slots (default)
  * - Unified equal pool
  * - Max 1 curse per item
  * - After curse → GOOD-only rolls
@@ -21,7 +21,7 @@ import java.util.*;
  * - Curses never level
  *
  * Slot Authority:
- * - When applying to a specific armor piece, ONLY roll effects compatible with that armor slot.
+ * - When applying to a specific armor piece, ONLY roll GOOD effects compatible with that armor slot.
  * - Curses are allowed on any armor piece (slot-agnostic), unless you later decide otherwise.
  */
 public final class RaffleService {
@@ -79,15 +79,20 @@ public final class RaffleService {
 
         int newLevel;
 
+        // Apply logic
         if (rolled.isCurse()) {
             effects.put(rolled, 1);
             newLevel = 1;
         } else {
+            // GOOD
             if (!rolled.canLevel()) {
                 boolean alreadyHas = effects.containsKey(rolled);
+
                 effects.put(rolled, 1);
                 newLevel = 1;
 
+                // Non-leveling duplicates still consume a slot (per design),
+                // but we return success without changing anything else.
                 if (alreadyHas) {
                     writeEffects(pdc, effects);
                     armor.setItemMeta(meta);
@@ -100,6 +105,7 @@ public final class RaffleService {
             }
         }
 
+        // Slot consumption is always +1 on success
         slotsUsed++;
 
         writeEffects(pdc, effects);
@@ -118,18 +124,21 @@ public final class RaffleService {
         for (RaffleEffectId id : pool.snapshot()) {
             if (id == null) continue;
 
-            // BENCHED CURSES
+            // BENCHED CURSES (never roll)
             if (id == RaffleEffectId.UNEASE || id == RaffleEffectId.MISSTEP) {
                 continue;
             }
 
+            // If this item already has a curse, only GOOD effects can roll.
             if (hasCurse && id.isCurse()) continue;
 
+            // Curses are currently allowed on ANY armor slot.
             if (id.isCurse()) {
                 candidates.add(id);
                 continue;
             }
 
+            // GOOD must be compatible with the target armor slot.
             if (isGoodEffectCompatibleWithSlot(id, targetSlot)) {
                 candidates.add(id);
             }
@@ -139,6 +148,14 @@ public final class RaffleService {
         return candidates.get(RNG.nextInt(candidates.size()));
     }
 
+    /**
+     * Slot compatibility for GOOD effects.
+     *
+     * IMPORTANT DESIGN CHOICE:
+     * If a GOOD effect is NOT found in RafflePotionTable, return FALSE.
+     * This prevents future custom GOOD effects from silently becoming "ANY slot"
+     * unless they are explicitly mapped.
+     */
     private boolean isGoodEffectCompatibleWithSlot(RaffleEffectId id, EquipmentSlot slot) {
         if (id == null || slot == null) return false;
 
@@ -153,7 +170,9 @@ public final class RaffleService {
                 };
             }
         }
-        return true;
+
+        // STRICT fallback (prevents accidental "any slot" behavior)
+        return false;
     }
 
     private static EquipmentSlot armorSlot(Material mat) {
@@ -191,12 +210,18 @@ public final class RaffleService {
             if (id == null) continue;
 
             int lvl;
-            try { lvl = Integer.parseInt(kv[1]); }
-            catch (NumberFormatException e) { lvl = 1; }
+            try {
+                lvl = Integer.parseInt(kv[1]);
+            } catch (NumberFormatException e) {
+                lvl = 1;
+            }
 
+            // Force curse & non-leveling good to lvl 1
             if (id.isCurse() || !id.canLevel()) lvl = 1;
+
             out.put(id, Math.max(1, lvl));
         }
+
         return out;
     }
 
@@ -213,6 +238,7 @@ public final class RaffleService {
             sb.append(e.getKey().name()).append(":").append(Math.max(1, e.getValue()));
             first = false;
         }
+
         pdc.set(RaffleKeys.EFFECTS, PersistentDataType.STRING, sb.toString());
     }
 
